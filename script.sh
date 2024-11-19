@@ -34,7 +34,7 @@ while IFS= read -r line; do
 done < "$build_txt"
 
 # Create a single regex pattern from building codes rather than looping
-build_codes_pattern=$(IFS="|"; echo "${build_codes[*]}") # Join with '|'
+build_codes_pattern=$(IFS="|"; echo "\b(${build_codes[*]})\b") # Join with '|' and add word boundaries
 
 # Read the schedule file line by line
 while IFS= read -r line; do
@@ -45,16 +45,10 @@ while IFS= read -r line; do
     elif [[ $line =~ (LEC|LAB|EXAM) ]]; then
         # Check if the line matches the building code pattern
         if [[ ! $line =~ $build_codes_pattern ]]; then
-            events+="$line"
+            events+=("$line")
         fi
     fi
 done < "$sched_txt"
-
-# Add the last course and its events
-if [ -n "$current_course" ]; then
-    course_titles+=("$current_course")
-    events+=("$event_details")
-fi
 
 # Output the results
 for i in "${!course_titles[@]}"; do
