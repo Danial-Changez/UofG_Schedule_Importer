@@ -3,40 +3,52 @@
 echo "What is the file path of your schedule?"
 read path
 
-pdf="$path"
-txt="Schedule.txt"
-ics="Schedule.ics"
+sched_pdf="$path"
+sched_txt="Schedule.txt"
+sched_ics="Schedule.ics"
+
+build_pdf="Building Abbreviations _ Scheduling.pdf"
+build_txt="Building Abbreviations _ Scheduling.txt"
+
 declare -a course_titles
 declare -a events
+declare -a build_codes
 
 # Check if file exists
-if [ ! -f "$pdf" ]; then
-    echo -e "Error: File '$pdf' not found\n"
+if [ ! -f "$sched_pdf" ]; then
+    echo -e "Error: File '$sched_pdf' not found\n"
     exit 1
 fi
 
-pdftotext "$pdf" "$txt"
+# Convert PDFs to text
+pdftotext "$sched_pdf" "$sched_txt"
+pdftotext "$build_pdf" "$build_txt"
 
-event_details=""
-current_course=""
-# Read through the file line-by-line
+# Load building codes into an array
 while IFS= read -r line; do
-    # Check if the line matches the course title format using grep
-    if echo "$line" | grep -qE '^[A-Z]{3,4}\*[0-9]{4}\*[0-9]{1,4}.*'; then
-        # Store the previous course's events (if any)
-        if [ -n "$current_course" ]; then
-            course_titles+=("$current_course")
-            events+=("$event_details")
-        fi
-
-        # Start a new course
-        current_course="$line"
-        event_details=""  # Reset event details for the new course
-    elif echo "$line" | grep -qE '(LEC|LAB|EXAM)'; then
-        # Collect event details for the current course
-        event_details+="$line "
+    if [[ $line == Code* ]]; then
+        # Extract codes after 'Code' and split into array
+        codes="${line#Code }" # Remove "Code " prefix
+        build_codes+=($codes)
     fi
-done < "$txt"
+done < "$build_txt"
+
+# Create a single regex pattern from building codes rather than looping
+build_codes_pattern=$(IFS="|"; echo "${build_codes[*]}") # Join with '|'
+
+# Read the schedule file line by line
+while IFS= read -r line; do
+    # Check if the line matches the course title format (replaced grep as it increased execution time exponentially)
+    if [[ $line =~ ^[A-Z]{3,4}\*[0-9]{4}\*[0-9]{1,4}.* ]]; then
+        # Store the previous course's events (if any)
+            course_titles+=("$line")
+    elif [[ $line =~ (LEC|LAB|EXAM) ]]; then
+        # Check if the line matches the building code pattern
+        if [[ ! $line =~ $build_codes_pattern ]]; then
+            events+="$line"
+        fi
+    fi
+done < "$sched_txt"
 
 # Add the last course and its events
 if [ -n "$current_course" ]; then
