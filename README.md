@@ -1,4 +1,4 @@
-# Schedule Parser for Guelph University Student's PDF Schedule
+# Parser for Guelph University Student's PDF Schedule
 
 This Bash script processes a Guelph University student's schedule, downloaded as a PDF from WebAdvisor, and extracts key details. It organizes the extracted information into variables and aims to generate an `.ics` file for easy import into calendar applications such as Google Calendar, Apple Calendar, or Outlook.
 
