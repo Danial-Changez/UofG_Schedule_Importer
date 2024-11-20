@@ -16,7 +16,7 @@ declare -a build_codes
 
 # Check if file exists
 if [ ! -f "$sched_pdf" ]; then
-    echo -e "Error: File '$sched_pdf' not found\n"
+    echo -e "Error: File '$sched_pdf' not found"
     exit 1
 fi
 
@@ -26,7 +26,7 @@ pdftotext "$build_pdf" "$build_txt"
 
 # Load building codes into an array
 while IFS= read -r line; do
-    if [[ $line == Code* ]]; then
+    if [ $line == Code* ]; then
         # Extract codes after 'Code' and split into array
         codes="${line#Code }" # Remove "Code " prefix
         build_codes+=($codes)
