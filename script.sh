@@ -48,11 +48,12 @@ VERSION:2.0
 CALSCALE:GREGORIAN
 EOF
 
+index=0
 # Read the schedule file line by line
 while IFS= read -r line; do
     # Identify course titles (e.g., CIS*2520*0110: Data Structures)
     if [[ $line =~ ^[A-Z]{3,4}\*[0-9]{4}\*.* ]]; then
-        current_course="$line"
+        course_titles+=("$line")
 
     # Identify and process events like LEC, LAB, or EXAM
     elif [[ $line =~ (LEC|LAB|EXAM|Electronic) && ! $line =~ ONLINE ]]; then
@@ -97,12 +98,12 @@ while IFS= read -r line; do
                             # Add event to ICS file
                             cat >>"$sched_ics" <<EOF
 BEGIN:VEVENT
-UID:$(powershell -Command "[guid]::NewGuid().ToString()")
+UID:$(openssl rand -hex 16)
 DTSTAMP:$dtstamp
 DTSTART:$dtstart
 DTEND:$dtend
-SUMMARY:$event_type for $current_course
-DESCRIPTION:$event_type session for $current_course
+SUMMARY:$event_type for '${course_titles[index]}'
+DESCRIPTION:$event_type session for '${course_titles[index]}'
 LOCATION:Room TBD
 END:VEVENT
 EOF
@@ -111,6 +112,7 @@ EOF
                     done
                 fi
             done <<<"$matches"
+            ((index++))
         fi
     fi
 done <"$sched_txt"
