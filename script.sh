@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Prompt the user for the schedule file path
 echo "What is the file path for your schedule?"
 read path
 
@@ -11,12 +10,12 @@ sched_ics="Schedule.ics"
 build_pdf="Building Abbreviations _ Scheduling.pdf"
 build_txt="Building Abbreviations _ Scheduling.txt"
 
-# Arrays for storing course titles, building names, and room numbers
+# Arrays for course titles, buildings, and rooms
 declare -a course_titles
 declare -a building
 declare -a room
 
-# Day mapping to numeric values for easier comparisons
+# Day mapping
 declare -A day_map=(["M"]=1 ["T"]=2 ["W"]=3 ["Th"]=4 ["F"]=5)
 
 # Ensure the schedule PDF exists
@@ -34,25 +33,30 @@ else
     cpu_cores=1 # Default to single-core if detection fails
 fi
 
-# Determine the number of parallel jobs based on CPU cores
+# Determine the number of parallel jobs
 if [ "$cpu_cores" -gt 1 ]; then
-    parallel_jobs=$((cpu_cores - 1)) # Use one less than the total cores to leave the system responsive
+    parallel_jobs=$((cpu_cores - 1)) # Use one less than the total cores
 else
     parallel_jobs=1 # Fall back to single-threaded execution
 fi
 
-# Notify the user of the number of parallel jobs
-echo "Using $parallel_jobs parallel jobs"
+# Notify the user about processing mode
+if command -v xargs &>/dev/null && [ "$parallel_jobs" -gt 1 ]; then
+    echo "Using $parallel_jobs parallel jobs for processing."
+    use_parallel=true
+else
+    echo "Parallel processing not available, falling back to sequential execution."
+    use_parallel=false
+fi
 
 # Convert PDFs to text for processing
 pdftotext "$sched_pdf" "$sched_txt"
 pdftotext "$build_pdf" "$build_txt"
 
-# Extract building codes from the building abbreviations file
+# Extract building codes
 declare -a build_codes
 while IFS= read -r line; do
     if [[ $line =~ ^Code ]]; then
-        # Extract building codes from lines starting with "Code"
         codes_part=$(echo "${line#Code }" | xargs)
         build_codes+=($codes_part)
     fi
@@ -64,15 +68,38 @@ build_codes_pattern="\\b($(
     echo "${build_codes[*]}"
 ))\\b"
 
-# Start building the ICS file content
+# Start the ICS file content
 ics_content="BEGIN:VCALENDAR
 VERSION:2.0
 CALSCALE:GREGORIAN
 "
 
+# Parse schedule text to populate course_titles, building, and room arrays
+while IFS= read -r line; do
+    # Identify and store course titles
+    if [[ $line =~ ^[A-Z]{3,4}\*[0-9]{4}\*.* ]]; then
+        course_titles+=("$line")
+        continue
+    fi
+
+    # Extract building and room information
+    while [[ $line =~ (LEC|LAB|EXAM|Electronic)[[:space:]]([A-Z]+|TBD),[[:space:]]([^[:space:]]+|TBD) ]]; do
+        building+=("${BASH_REMATCH[2]}")
+        room+=("${BASH_REMATCH[3]}")
+        line="${line#*"${BASH_REMATCH[0]}"}"
+    done
+done <"$sched_txt"
+
+# Debug: Check arrays
+echo "Debug: course_titles: ${course_titles[@]}"
+echo "Debug: building: ${building[@]}"
+echo "Debug: room: ${room[@]}"
+
 # Function to process a single line of the schedule file
 process_line() {
     local line="$1"
+    local local_ics_content=""
+    local location_index=0
 
     # Match event details (e.g., LEC, LAB, EXAM)
     if [[ $line =~ (LEC|LAB|EXAM)[[:space:]]([MTWThF]+)[[:space:]]([0-9:AMP\ \-]+)[[:space:]]([0-9/]+)[[:space:]]([0-9/]+) ]]; then
@@ -99,7 +126,7 @@ process_line() {
             event_day_numbers+=("${day_map[$day]}")
         done
 
-        # Iterate through the date range and generate ICS events
+        # Iterate through date range
         local start_timestamp=$(date -d "$start_date" +%s)
         local end_timestamp=$(date -d "$end_date" +%s)
 
@@ -111,46 +138,42 @@ process_line() {
                 local dtend=$(date -d "$formatted_date $end_time" +"%Y%m%dT%H%M%S")
                 local dtstamp=$(date -u +"%Y%m%dT%H%M%S")
 
-                # Append the event details to the ICS content
-                ics_content+=$(
-                    cat <<EOF
-BEGIN:VEVENT
-UID:$(openssl rand -hex 16)
-DTSTAMP:$dtstamp
-DTSTART:$dtstart
-DTEND:$dtend
-SUMMARY:$event_type for ${course_titles[title_index]}
-DESCRIPTION:$event_type session for ${course_titles[title_index]}
-LOCATION:${building[location_index]} ${room[location_index]}
-END:VEVENT
-EOF
+                # Add event to local ICS content
+                local_ics_content+=$(
+                    printf "BEGIN:VEVENT\nUID:%s\nDTSTAMP:%s\nDTSTART:%s\nDTEND:%s\nSUMMARY:%s for %s\nDESCRIPTION:%s session for %s\nLOCATION:%s %s\nEND:VEVENT\n" \
+                        "$(openssl rand -hex 16)" "$dtstamp" "$dtstart" "$dtend" \
+                        "$event_type" "${course_titles[title_index]}" \
+                        "$event_type" "${course_titles[title_index]}" \
+                        "${building[location_index]}" "${room[location_index]}"
                 )
             fi
-            start_timestamp=$((start_timestamp + 86400)) # Increment by one day in seconds
+            start_timestamp=$((start_timestamp + 86400)) # Increment by one day
         done
+        ((location_index++))
     fi
+
+    # Return the local ICS content
+    echo "Local Content: $local_ics_content"
 }
 
-# Check if xargs is available and use it for parallel processing if possible
-if command -v xargs &>/dev/null && [ "$parallel_jobs" -gt 1 ]; then
-    # Export necessary variables and functions for parallel processing
+# Sequential or Parallel Processing
+if $use_parallel; then
+    echo "Using parallel processing..."
     export -f process_line
-    export day_map build_codes build_codes_pattern ics_content
-
-    # Use xargs for parallel processing
-    # xargs splits the input and processes each line concurrently using multiple jobs
-    cat "$sched_txt" | xargs -P "$parallel_jobs" -I{} bash -c 'process_line "$@"' _ {}
+    export day_map course_titles building room
+    ics_content+=$(cat "$sched_txt" | xargs -P "$parallel_jobs" -I{} bash -c 'process_line "$@"' _ {})
+    ((title_index++))
 else
-    # Fall back to sequential processing if xargs is not available or parallelism is not supported
-    echo "Parallel processing not available, falling back to sequential execution."
+    echo "Using sequential processing..."
     while IFS= read -r line; do
-        process_line "$line"
+        ics_content+=$(process_line "$line")
+        ((title_index++))
     done <"$sched_txt"
 fi
 
-# Close the ICS file content
+# Close the ICS content
 ics_content+="END:VCALENDAR"
 
-# Write all ICS content to the file at once
+# Write ICS content to file
 echo "$ics_content" >"$sched_ics"
 echo "ICS file generated at $sched_ics"
