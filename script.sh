@@ -43,12 +43,11 @@ build_codes_pattern="\\b($(
     echo "${build_codes[*]}"
 ))\\b"
 
-# Start the ICS file
-cat >"$sched_ics" <<EOF
-BEGIN:VCALENDAR
+# Start the ICS file content
+ics_content="BEGIN:VCALENDAR
 VERSION:2.0
 CALSCALE:GREGORIAN
-EOF
+"
 
 # Parse schedule text to extract course titles and event details
 title_index=0
@@ -70,7 +69,7 @@ while IFS= read -r line; do
     done
 done <"$sched_txt"
 
-# Parse events and generate ICS entries
+# Parse events and generate ICS entries in memory
 while IFS= read -r line; do
     matches=$(echo "$line" | grep -oE '(LEC|LAB|EXAM)[[:space:]]([MTWThF]+)[[:space:]]([0-9:AMP\ \-]+)[[:space:]]([0-9/]+)[[:space:]]([0-9/]+)')
     if [[ -n "$matches" ]]; then
@@ -107,8 +106,10 @@ while IFS= read -r line; do
                         dtstart=$(date -d "$current_date $start_time" +"%Y%m%dT%H%M%S")
                         dtend=$(date -d "$current_date $end_time" +"%Y%m%dT%H%M%S")
                         dtstamp=$(date -u +"%Y%m%dT%H%M%SZ")
-                        # Add event to ICS file
-                        cat >>"$sched_ics" <<EOF
+
+                        # Add event to ICS content
+                        ics_content+=$(
+                            cat <<EOF
 BEGIN:VEVENT
 UID:$(openssl rand -hex 16)
 DTSTAMP:$dtstamp
@@ -119,6 +120,7 @@ DESCRIPTION:$event_type session for ${course_titles[title_index]}
 LOCATION:${building[location_index]} ${room[location_index]}
 END:VEVENT
 EOF
+                        )
                     fi
                     current_date=$(date -I -d "$current_date + 1 day")
                 done
@@ -133,6 +135,9 @@ EOF
     fi
 done <"$sched_txt"
 
-# Close the ICS file
-echo "END:VCALENDAR" >>"$sched_ics"
+# Close the ICS content
+ics_content+="END:VCALENDAR"
+
+# Write all ICS content to the file at once
+echo "$ics_content" >"$sched_ics"
 echo "ICS file generated at $sched_ics"
