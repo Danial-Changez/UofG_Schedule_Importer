@@ -16,32 +16,7 @@ if [[ ! -f "$sched_pdf" ]]; then
     exit 1
 fi
 
-# Detect the number of CPU cores for parallel processing
-if command -v nproc &>/dev/null; then
-    cpu_cores=$(nproc --all) # For Linux and WSL
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    cpu_cores=$(sysctl -n hw.ncpu) # For macOS
-else
-    cpu_cores=1 # Default to single-core if detection fails
-fi
-
-# Determine the number of parallel jobs
-if [ "$cpu_cores" -gt 1 ]; then
-    parallel_jobs=$((cpu_cores - 1)) # Use one less than the total cores
-else
-    parallel_jobs=1 # Fall back to single-threaded execution
-fi
-
-# Notify the user about processing mode
-if command -v xargs &>/dev/null && [ "$parallel_jobs" -gt 1 ]; then
-    echo "Using $parallel_jobs parallel jobs for processing."
-    use_parallel=true
-else
-    echo "Parallel processing not available, falling back to sequential execution."
-    use_parallel=false
-fi
-
-# Convert PDFs to text for processing
+# Convert PDFs to text
 pdftotext "$sched_pdf" "$sched_txt"
 pdftotext "$build_pdf" "$build_txt"
 
@@ -54,7 +29,7 @@ while IFS= read -r line; do
     fi
 done <"$build_txt"
 
-# Create a regex pattern for matching building codes
+# Create a regex pattern from building codes
 build_codes_pattern="\\b($(
     IFS="|"
     echo "${build_codes[*]}"
@@ -102,17 +77,17 @@ while IFS= read -r line; do
 
         # Parse start and end times
         if [[ $time_range =~ ^([0-9]+:[0-9]+[[:space:]]*[APM]+)[[:space:]]*[-]?[[:space:]]*([0-9]+:[0-9]+[[:space:]]*[APM]+)$ ]]; then
-            local start_time="${BASH_REMATCH[1]}"
-            local end_time="${BASH_REMATCH[2]}"
+            start_time="${BASH_REMATCH[1]}"
+            end_time="${BASH_REMATCH[2]}"
         else
             echo "Error parsing time range: $time_range"
-            return
+            continue
         fi
 
         # Map days to ICS `BYDAY` format
         byday=""
         for ((i = 0; i < ${#days}; i++)); do
-            local day="${days:i:1}"
+            day="${days:i:1}"
             [[ $day == "T" && ${days:i+1:1} == "h" ]] && day="Th" && ((i++))
             case "$day" in
             M) byday+="MO," ;;
