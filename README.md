@@ -1,6 +1,6 @@
 # Parser for Guelph University Student's PDF Schedule
 
-This Bash script processes a Guelph University student's schedule, downloaded as a PDF from WebAdvisor, and extracts key details. It organizes the extracted information into variables and aims to generate an `.ics` file for easy import into calendar applications such as Google Calendar, Apple Calendar, or Outlook.
+This Bash script automates the process of converting a Guelph University student's schedule (downloaded as a PDF from WebAdvisor) into a `.ics` file for easy import into calendar applications such as Google Calendar, Apple Calendar, or Outlook. The script processes lectures, labs, and exams while efficiently handling recurring events to optimize performance.
 
 ## Table of Contents
 - [Features](#features)
@@ -11,35 +11,34 @@ This Bash script processes a Guelph University student's schedule, downloaded as
   - [Steps to Run](#steps-to-run)
 - [Example Input and Output](#example-input-and-output)
   - [Example Input (PDF Content)](#example-input-pdf-content)
-  - [Example Output (Script Variables)](#example-output-script-variables)
-
-
-
+  - [Example Output (ICS File)](#example-output-ics-file)
+- [Performance](#performance)
+- [Future Enhancements](#future-enhancements)
 
 ## Features
 
 1. **PDF Conversion**:
    - Converts the WebAdvisor PDF schedule into a plain text file using `pdftotext`.
-   
-2. **Data Parsing**:
-   - Extracts course titles (e.g., `CIS*2520*0110: Data Structures`) into a `course_titles` array.
-   - Extracts event details (e.g., lectures, labs, exams) into an `events` array.
-   
-3. **Output Display**:
-   - Prints the parsed course titles and events for validation and review.
 
+2. **Recurring Event Support**:
+   - Generates optimized recurring events for lectures, labs, and exams using ICS `RRULE` format.
+
+3. **Calendar Integration**:
+   - Outputs an `.ics` file compatible with calendar applications like Google Calendar, Apple Calendar, and Outlook.
+
+4. **Fast Execution**:
+   - Efficient parsing and caching mechanisms ensure quick execution, even for complex schedules.
 
 ## Goals
 
-1. **Store Schedule Data**:
-   - Dynamically extract and organize course titles and event details (later to be separated accordingly into LEC, LAB, EXAM) into Bash variables.
+1. **Automate Schedule Parsing**:
+   - Extract and organize course titles and event details from the PDF into structured data.
 
 2. **Generate `.ics` File**:
-   - Format the parsed data into an iCalendar (`.ics`) file for easy import into calendar applications.
+   - Automate the creation of a fully compliant iCalendar file for easy import into calendar applications.
 
-3. **Automation**:
-   - Automate the parsing of Guelph University student schedules downloaded as PDFs from WebAdvisor.
-
+3. **Optimize Performance**:
+   - Handle recurring events to minimize file size and maximize processing speed.
 
 ## Prerequisites
 
@@ -54,25 +53,19 @@ This Bash script processes a Guelph University student's schedule, downloaded as
    #### For Linux/macOS:
    ```bash
    sudo apt install poppler-utils
-   
-   brew install poppler
    ```
-   
+
    #### For Windows (via Chocolatey):
    - Install [Chocolatey](https://ultahost.com/knowledge-base/install-chocolatey-on-windows-10/) if it’s not already installed.
-   - Follow the guide to set up Chocolatey on Windows.
    - Install `pdftotext` using Chocolatey:
-     
      ```powershell
      choco install poppler
      ```
-   - Ensure the `poppler` tools are available in your PATH by restarting your Git Bash or terminal.
 
 2. **Bash**:
    - The script requires a Bash-compatible shell (e.g., Git Bash on Windows, or Bash on Linux/macOS).
 
-### Supported Input File
-- The script processes Guelph University student's schedule downloaded as PDFs from WebAdvisor.
+---
 
 ## Usage
 
@@ -82,24 +75,12 @@ This Bash script processes a Guelph University student's schedule, downloaded as
    ```bash
    ./script.sh
    ```
-   
-2. **Provide the PDF Path**:
-   When prompted, enter the full path to your downloaded WebAdvisor schedule PDF:
 
-   ```bash
-   What is the file path of your schedule?
-   ```
-   
+2. **Provide the PDF Path**:
+   When prompted, enter the full path to your downloaded WebAdvisor schedule PDF.
+
 3. **View the Output**:
-   The script will:
-   - Extract and display course titles and their associated events in the terminal.
-   - Example output:
-     
-     ```markdown
-     -------------------
-     Course: CIS*2520*0110: Data Structures
-     Events: LEC MWF 1:30 PM - 2:20 PM LAB T 3:30 PM - 5:20 PM EXAM F 2:30 PM - 4:30 PM 
-     -------------------
+   - The script will generate a `Schedule.ics` file in the current directory.
 
 ## Example Input and Output
 
@@ -114,24 +95,37 @@ LAB T 3:30 PM - 5:20 PM 9/5/2024 - 12/13/2024
 EXAM F 2:30 PM - 4:30 PM 12/6/2024 - 12/6/2024
 ```
 
-### Example Output (Script Variables)
+### Example Output (ICS File)
 
-```bash
-Course: CIS*2520*0110: Data Structures
-Events: LEC MWF 1:30 PM - 2:20 PM LAB T 3:30 PM - 5:20 PM EXAM F 2:30 PM - 4:30 PM 
+```ics
+BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:abcd1234
+DTSTAMP:20230901T123456Z
+DTSTART:20230905T133000
+DTEND:20230905T142000
+RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=20231213T235959Z
+SUMMARY:Lecture for CIS*2520*0110
+DESCRIPTION:Lecture session for CIS*2520*0110
+LOCATION:Mackinnon Building Room 101
+END:VEVENT
+END:VCALENDAR
 ```
 
+## Performance
+
+### Execution Time
+- The script is optimized for performance and can process schedules in less than **2 seconds** for typical inputs.
 
 ## Future Enhancements
 
-1. **Generate `.ics` File**:
-   - Automate the creation of an `.ics` file compatible with calendar applications.
+1. **Error Handling**:
+   - Improve validation for missing or malformed input files.
 
-2. **Error Handling**:
-   - Handle invalid PDF files or missing schedule information.
+2. **Additional Features**:
+   - Add support for holidays or exceptions in the schedule.
 
-3. **Automated Import to Calendar Apps**:
-   - Explore ways to automate the process of importing `.ics` files into the user's calendar application, with a focus on Google Calendar.
-   - Potential options include:
-     - Providing a script to upload the `.ics` file via Google Calendar API.
-     - Offering simple instructions for manual import if automation isn't possible.
+3. **Improved User Interface** (**With Help from Matthew Jarzynowski**):
+   - Provide clearer prompts and progress messages for users.
