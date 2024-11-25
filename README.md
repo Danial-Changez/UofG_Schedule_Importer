@@ -1,6 +1,6 @@
 # Parser for Guelph University Student's PDF Schedule
 
-This Bash script automates the process of converting a Guelph University student's schedule (downloaded as a PDF from WebAdvisor) into a `.ics` file for easy import into calendar applications such as Google Calendar, Apple Calendar, or Outlook. The script processes lectures, labs, and exams while efficiently handling recurring events to optimize performance.
+This Bash script automates converting a Guelph University student's schedule (downloaded as a PDF from WebAdvisor) into a `.ics` file for easy import into calendar applications such as Google Calendar, Apple Calendar, or Outlook. The script processes lectures, labs, and exams while efficiently handling recurring events to optimize performance.
 
 ## Table of Contents
 - [Features](#features)
@@ -24,7 +24,7 @@ This Bash script automates the process of converting a Guelph University student
    - Generates optimized recurring events for lectures, labs, and exams using ICS `RRULE` format.
 
 3. **Calendar Integration**:
-   - Outputs an `.ics` file compatible with calendar applications like Google Calendar, Apple Calendar, and Outlook.
+   - Outputs a `.ics` file compatible with calendar applications like Google Calendar, Apple Calendar, and Outlook.
 
 4. **Fast Execution**:
    - Efficient parsing and caching mechanisms ensure quick execution, even for complex schedules.
@@ -65,21 +65,34 @@ This Bash script automates the process of converting a Guelph University student
 2. **Bash**:
    - The script requires a Bash-compatible shell (e.g., Git Bash on Windows, or Bash on Linux/macOS).
 
----
-
 ## Usage
 
 ### Steps to Run
 
-1. **Run the Script**:
+1. **Download the Schedule PDF from WebAdvisor**:
+   - Log in to **WebAdvisor** using your University of Guelph student account.
+   - Navigate to the **Student Planning** section.
+   - Select **Plan your Degree & Register for Classes**.
+   - Locate the **Print** button on the page (as shown below) and click it:
+
+     ![Print Button](https://github.com/user-attachments/assets/416127fa-d3ed-4fd6-b94a-cf27b476ba6a)
+
+   - A new tab will open with your schedule in a printable format. Follow these steps to save it as a PDF:
+     - Press **Ctrl + P** (or **Cmd + P** on Mac) to open the print dialog.
+     - Change the **Destination** to **Save as PDF**.
+     - Click **Save** to download the schedule:
+
+       ![Save as PDF](https://github.com/user-attachments/assets/e0d6876f-b085-4f6d-8bb0-f4c538161292)
+
+2. **Run the Script**:
    ```bash
    ./script.sh
    ```
 
-2. **Provide the PDF Path**:
+3. **Provide the PDF Path**:
    When prompted, enter the full path to your downloaded WebAdvisor schedule PDF.
 
-3. **View the Output**:
+4. **View the Output**:
    - The script will generate a `Schedule.ics` file in the current directory.
 
 ## Example Input and Output
@@ -126,6 +139,9 @@ END:VCALENDAR
 
 2. **Additional Features**:
    - Add support for holidays or exceptions in the schedule.
+  
+3. **Implement Outlook and Google Calendar APIs**
+   - Offer direct imports from the script into Outlook or Google Calendar using their respective APIs.
 
-3. **Improved User Interface** (**With Help from Matthew Jarzynowski**):
+4. **Improved User Interface** (**With Help from Matthew Jarzynowski**):
    - Provide clearer prompts and progress messages for users.
