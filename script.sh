@@ -61,7 +61,7 @@ while IFS= read -r line; do
     fi
 
     # Extract building and room information
-    while [[ $line =~ (LEC|LAB|EXAM|Electronic)\ ([A-Z]+|TBD),\ ([^ ]+|TBD) ]]; do
+    while [[ $line =~ (LEC|LAB|EXAM|Electronic)[[:space:]]([A-Z]+|TBD),[[:space:]]([^[:space:]]+|TBD) ]]; do
         building+=("${BASH_REMATCH[2]}")
         room+=("${BASH_REMATCH[3]}")
         # Remove the matched portion to process the remaining line
@@ -71,45 +71,45 @@ done <"$sched_txt"
 
 # Parse events and generate ICS entries in memory
 while IFS= read -r line; do
-    matches=$(echo "$line" | grep -oE '(LEC|LAB|EXAM)[[:space:]]([MTWThF]+)[[:space:]]([0-9:AMP\ \-]+)[[:space:]]([0-9/]+)[[:space:]]([0-9/]+)')
-    if [[ -n "$matches" ]]; then
-        while IFS= read -r match; do
-            if [[ $match =~ (LEC|LAB|EXAM)[[:space:]]([MTWThF]+)[[:space:]]([0-9:AMP\ \-]+)[[:space:]]([0-9/]+)[[:space:]]([0-9/]+) ]]; then
-                event_type="${BASH_REMATCH[1]}"
-                days="${BASH_REMATCH[2]}"
-                time_range="${BASH_REMATCH[3]}"
-                start_date="${BASH_REMATCH[4]}"
-                end_date="${BASH_REMATCH[5]}"
+    if [[ $line =~ (LEC|LAB|EXAM)[[:space:]]([MTWThF]+)[[:space:]]([0-9:AMP\ \-]+)[[:space:]]([0-9/]+)[[:space:]]([0-9/]+) ]]; then
+        event_type="${BASH_REMATCH[1]}"
+        days="${BASH_REMATCH[2]}"
+        time_range="${BASH_REMATCH[3]}"
+        start_date="${BASH_REMATCH[4]}"
+        end_date="${BASH_REMATCH[5]}"
 
-                # Parse start and end times
-                if [[ $time_range =~ ^([0-9]+:[0-9]+[[:space:]]*[APM]+)[[:space:]]*[-]?[[:space:]]*([0-9]+:[0-9]+[[:space:]]*[APM]+)$ ]]; then
-                    start_time="${BASH_REMATCH[1]}"
-                    end_time="${BASH_REMATCH[2]}"
-                else
-                    echo "Error parsing time range: $time_range"
-                    continue
-                fi
+        # Parse start and end times
+        if [[ $time_range =~ ^([0-9]+:[0-9]+[[:space:]]*[APM]+)[[:space:]]*[-]?[[:space:]]*([0-9]+:[0-9]+[[:space:]]*[APM]+)$ ]]; then
+            start_time="${BASH_REMATCH[1]}"
+            end_time="${BASH_REMATCH[2]}"
+        else
+            echo "Error parsing time range: $time_range"
+            continue
+        fi
 
-                # Map days to numbers
-                event_day_numbers=()
-                for ((i = 0; i < ${#days}; i++)); do
-                    day="${days:i:1}"
-                    [[ $day == "T" && ${days:i+1:1} == "h" ]] && day="Th" && ((i++))
-                    event_day_numbers+=("${day_map[$day]}")
-                done
+        # Map days to numbers
+        event_day_numbers=()
+        for ((i = 0; i < ${#days}; i++)); do
+            day="${days:i:1}"
+            [[ $day == "T" && ${days:i+1:1} == "h" ]] && day="Th" && ((i++))
+            event_day_numbers+=("${day_map[$day]}")
+        done
 
-                # Iterate through date range
-                current_date=$(date -I -d "$start_date")
-                while [[ "$current_date" < $(date -I -d "$end_date + 1 day") ]]; do
-                    day_of_week=$(date -d "$current_date" +%u)
-                    if [[ " ${event_day_numbers[@]} " =~ " $day_of_week " ]]; then
-                        dtstart=$(date -d "$current_date $start_time" +"%Y%m%dT%H%M%S")
-                        dtend=$(date -d "$current_date $end_time" +"%Y%m%dT%H%M%S")
-                        dtstamp=$(date -u +"%Y%m%dT%H%M%SZ")
+        # Iterate through date range
+        start_timestamp=$(date -d "$start_date" +%s)
+        end_timestamp=$(date -d "$end_date" +%s)
 
-                        # Add event to ICS content
-                        ics_content+=$(
-                            cat <<EOF
+        while [ "$start_timestamp" -le "$end_timestamp" ]; do
+            day_of_week=$(date -d "@$start_timestamp" +%u)
+            if [[ " ${event_day_numbers[@]} " =~ " $day_of_week " ]]; then
+                formatted_date=$(date -d "@$start_timestamp" +"%Y-%m-%d")
+                dtstart=$(date -d "$formatted_date $start_time" +"%Y%m%dT%H%M%S")
+                dtend=$(date -d "$formatted_date $end_time" +"%Y%m%dT%H%M%S")
+                dtstamp=$(date -u +"%Y%m%dT%H%M%S")
+
+                # Add event to ICS content
+                ics_content+=$(
+                    cat <<EOF
 BEGIN:VEVENT
 UID:$(openssl rand -hex 16)
 DTSTAMP:$dtstamp
@@ -120,19 +120,17 @@ DESCRIPTION:$event_type session for ${course_titles[title_index]}
 LOCATION:${building[location_index]} ${room[location_index]}
 END:VEVENT
 EOF
-                        )
-                    fi
-                    current_date=$(date -I -d "$current_date + 1 day")
-                done
-
-                # Increment location index
-                ((location_index++))
+                )
             fi
-        done <<<"$matches"
+            start_timestamp=$((start_timestamp + 86400)) # Add one day in seconds
+        done
 
-        # Increment title index after processing all events for this course
-        ((title_index++))
+        # Increment location index
+        ((location_index++))
     fi
+
+    # Increment title index after processing all events for this course
+    ((title_index++))
 done <"$sched_txt"
 
 # Close the ICS content
