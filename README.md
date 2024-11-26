@@ -1,6 +1,6 @@
 # Parser for Guelph University Student's PDF Schedule
 
-This Bash script automates converting a Guelph University student's schedule (downloaded as a PDF from WebAdvisor) into a `.ics` file for easy import into calendar applications such as Google Calendar, Apple Calendar, or Outlook. The script processes lectures, labs, and exams while efficiently handling recurring events to optimize performance.
+This Bash script automates converting a University of Guelph student's schedule (downloaded as a PDF from WebAdvisor) into a `.ics` file for easy import into calendar applications such as Google, Apple, or Outlook Calendar. The script processes lectures, labs, and exams while handling recurring events to optimize performance.
 
 ## Table of Contents
 - [Features](#features)
@@ -35,10 +35,10 @@ This Bash script automates converting a Guelph University student's schedule (do
    - Extract and organize course titles and event details from the PDF into structured data.
 
 2. **Generate `.ics` File**:
-   - Automate the creation of a fully compliant iCalendar file for easy import into calendar applications.
+   - Automate the creation of an iCalendar file for easy import into calendar applications.
 
 3. **Optimize Performance**:
-   - Handle recurring events to minimize file size and maximize processing speed.
+   - Handle recurring events to minimize file size and reduce execution time.
 
 ## Prerequisites
 
@@ -48,21 +48,20 @@ This Bash script automates converting a Guelph University student's schedule (do
    - Converts PDF files to plain text for processing.
    - Part of the `poppler-utils` package.
 
-   **Installation Options**:
+   #### Installation Options:
+   **For Linux/macOS**:
+     ```bash
+     sudo apt install poppler-utils
+     ```
 
-   #### For Linux/macOS:
-   ```bash
-   sudo apt install poppler-utils
-   ```
-
-   #### For Windows (via Chocolatey):
+   **For Windows (via Chocolatey)**:
    - Install [Chocolatey](https://ultahost.com/knowledge-base/install-chocolatey-on-windows-10/) if it’s not already installed.
    - Install `pdftotext` using Chocolatey:
      ```powershell
      choco install poppler
      ```
 
-2. **Bash**:
+3. **Bash**:
    - The script requires a Bash-compatible shell (e.g., Git Bash on Windows, or Bash on Linux/macOS).
 
 ## Usage
