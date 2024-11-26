@@ -2,9 +2,8 @@
 
 # Prompt for schedule file
 echo "What is the file path for your schedule?"
-read path
+read sched_pdf
 
-sched_pdf="$path"
 sched_txt="Schedule.txt"
 sched_ics="Schedule.ics"
 build_pdf="Building Abbreviations _ Scheduling.pdf"
@@ -17,8 +16,8 @@ if [[ ! -f "$sched_pdf" ]]; then
 fi
 
 # Convert PDFs to text
-pdftotext "$sched_pdf" "$sched_txt"
-pdftotext "$build_pdf" "$build_txt"
+pdftotext -table "$sched_pdf" "$sched_txt"
+pdftotext -table "$build_pdf" "$build_txt"
 
 # Extract building codes
 declare -a build_codes
