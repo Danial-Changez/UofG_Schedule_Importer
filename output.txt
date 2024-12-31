@@ -1,0 +1,18 @@
+Parsed Schedule Data:
+
+Course: ENGG*2450*0205
+Details:
+started              Electric Circuits    1:20 PM                                       LAB RICH, 1504A
+                                          1/6/2025 -                                    LAB RICH, 1504B
+
+
+Course: CIS*2910*0105
+Details:
+started              Discrete Structures  11:20 AM                                      LAB MCKN, 227
+
+
+Course: CIS*2750*0201
+Details:
+started              Software System      9:50 AM                                       LAB THRN, 2418
+
+

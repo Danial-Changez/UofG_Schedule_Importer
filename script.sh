@@ -1,13 +1,17 @@
 #!/bin/bash
 
+source ./functions.sh
+
 # Prompt for schedule file
 echo "What is the file path for your schedule?"
-read sched_pdf
+# read sched_pdf
 
+sched_pdf="Schedule.pdf"
 sched_txt="Schedule.txt"
 sched_ics="Schedule.ics"
 build_pdf="Building Abbreviations _ Scheduling.pdf"
 build_txt="Building Abbreviations _ Scheduling.txt"
+output="output.txt"
 
 # Check if the schedule PDF exists
 if [[ ! -f "$sched_pdf" ]]; then
@@ -17,26 +21,16 @@ fi
 
 # Convert PDFs to text
 pdftotext -table "$sched_pdf" "$sched_txt"
-pdftotext -table "$build_pdf" "$build_txt"
-
-# Extract building codes
-declare -a build_codes
-while IFS= read -r line; do
-    if [[ $line =~ ^Code ]]; then
-        codes_part=$(echo "${line#Code }" | xargs)
-        build_codes+=($codes_part)
-    fi
-done <"$build_txt"
-
-# Create a regex pattern from building codes
-build_codes_pattern="\\b($(
-    IFS="|"
-    echo "${build_codes[*]}"
-))\\b"
+pdftotext "$build_pdf" "$build_txt"
 
 # Initialize arrays and mappings
-declare -a course_titles building room
 declare -A day_map=(["M"]=1 ["T"]=2 ["W"]=3 ["Th"]=4 ["F"]=5)
+
+build_codes_pattern=$(extract_building_codes "$build_txt")
+parse_schedule "$sched_txt" "$output"
+
+# For table implementation purposes, ignoring old format data extraction
+exit 1
 
 # ICS content header
 ics_content="BEGIN:VCALENDAR
