@@ -7,6 +7,9 @@ from bs4 import BeautifulSoup
 import requests
 import re
 import json
+from datetime import datetime, timedelta, timezone
+import uuid
+import time
 
 def fetch_page_info(term: str) -> str:
     
@@ -64,8 +67,7 @@ def extract_courses(html: str, term: str) -> list[dict]:
         raise RuntimeError("Could not extract JS object")
     
     # Parse via json
-    js_obj = m.group(1)
-    data = json.loads(js_obj)
+    data = json.loads(m.group(1))
 
     # Navigate to Terms array and select correct terms for PlannedCourses
     terms = data["Terms"]
@@ -80,20 +82,22 @@ def sorted_courses(raw: list[dict]) -> list[dict]:
 
     for entry in raw:
         # Metadata under section
-        sec = entry["Section"]
+        sec = entry.get("Section", {})
         
         # Shared course fields
-        course_name     = sec["CourseName"]
-        section_number  = sec["Number"]
-        min_credits     = sec["MinimumCredits"]
-        instructors     = sec.get("Faculty", [])
+        base = {
+            "CourseName":     sec.get("CourseName"),
+            "SectionNumber":  sec.get("Number"),
+            "Credits":        sec.get("MinimumCredits"),
+            "Instructors":    sec.get("Faculty", [])
+        }
         
         # Create a row per meeting
-        for meeting in sec["PlannedMeetings"]:
+        for meeting in sec.get("PlannedMeetings", []):
+            if not meeting.get("StartTime") or not meeting.get("EndTime"):
+                continue
             output.append({
-                "CourseName":        course_name,
-                "SectionNumber":     section_number,
-                "MinimumCredits":    min_credits,
+                **base,
                 "InstructionalMethod": meeting["InstructionalMethod"],
                 "StartTime":           meeting["StartTime"],
                 "EndTime":             meeting["EndTime"],
@@ -102,30 +106,76 @@ def sorted_courses(raw: list[dict]) -> list[dict]:
                 "Location":            meeting["MeetingLocation"].strip(),
                 "StartDate":           meeting["StartDateString"],
                 "EndDate":             meeting["EndDateString"],
-                "Instructors":         instructors
             })
     return output
 
+def generate_ics(events: list[dict], output_file: str):
+    cal_lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "CALSCALE:GREGORIAN"
+    ]
+    
+    for ev in events:
+        # Parse dates and times
+        start_dt = datetime.strptime(
+            f"{ev['StartDate']} {ev['StartTime']}",
+            "%m/%d/%Y %I:%M %p"
+        )
+        end_dt   = datetime.strptime(
+            f"{ev['StartDate']} {ev['EndTime']}",
+            "%m/%d/%Y %I:%M %p"
+        )
+        
+        # Build BYDAY from DaysOfWeek string
+        dow = ev.get("DaysOfWeek", "")
+        bydays = []
+        if "Th" in dow:
+            bydays.append("TH")
+            dow = dow.replace("Th", "")
+        mapping = {"M":"MO","T":"TU","W":"WE","F":"FR"}
+        for char, code in mapping.items():
+            if char in dow:
+                bydays.append(code)
+        byday_str = ",".join(bydays)
+
+        until_dt = datetime.strptime(ev['EndDate'], "%m/%d/%Y") + timedelta(hours=23, minutes=59, seconds=59)
+        uid = uuid.uuid4().hex + "@schedule"
+        
+        cal_lines += [
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTAMP:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%S')}",
+            f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}",
+            f"RRULE:FREQ=WEEKLY;BYDAY={byday_str};UNTIL={until_dt.strftime('%Y%m%dT%H%M%S')}",
+            f"SUMMARY:{ev['InstructionalMethod']} {ev['CourseName']}*{ev['SectionNumber']}",
+            f"DESCRIPTION:Instructor(s): {', '.join(ev['Instructors'])}\\nCredits: {ev['Credits']}",
+            f"LOCATION:{ev['Location']}",
+            "END:VEVENT"
+        ]
+
+    cal_lines.append("END:VCALENDAR")
+    
+    with open(output_file, "w", encoding="UTF-8") as f:
+        f.write("\n".join(cal_lines))
+
 def main():
-    term = "W25"
+    start_time = time.perf_counter()
+    term = "W24"
     
     # Fetch the schedule page HTML (handles login/MFA)
     html = fetch_page_info(term)
     
     # Extract the raw list of course dicts
     courses = extract_courses(html, term)
-    output_path = "../res/courses.json"
-    
-    # Write raw JSON for inspection/debugging
-    with open(output_path, "w", encoding="UTF-8") as f:
-        json.dump(courses, f, indent=2)
-
-    # Sort results, then overwrite the same json
     sorted_results = sorted_courses(courses)
-    with open(output_path, "w", encoding="UTF-8") as f:
-        json.dump(sorted_results, f, indent=2)
+    ics_path = "../schedule.ics"
+    generate_ics(sorted_results, ics_path)
     
-    print(f"Wrote {len(courses)} courses to {output_path}")
+    end_time = time.perf_counter()
+    execution_time = end_time - start_time
+    print(f"Wrote {len(courses)} courses to {ics_path} in {execution_time:.2f} seconds")
         
 if __name__ == "__main__":
     main()
