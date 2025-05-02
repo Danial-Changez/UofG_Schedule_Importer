@@ -109,56 +109,99 @@ def sorted_courses(raw: list[dict]) -> list[dict]:
             })
     return output
 
+from datetime import datetime, timedelta, timezone
+import uuid
+
 def generate_ics(events: list[dict], output_file: str):
-    cal_lines = [
+    # Build cutoff_map from non-exam items: end_date − 2 weeks
+    cutoff_map = {}
+    for ev in events:
+        if ev['InstructionalMethod'] == 'EXAM':
+            continue
+        key = (ev['CourseName'], ev['SectionNumber'])
+        # Parse non-exam EndDate
+        end_dt = datetime.strptime(ev['EndDate'], "%m/%d/%Y")
+        # Keep latest end date per course-section
+        if key not in cutoff_map or end_dt > cutoff_map[key]:
+            cutoff_map[key] = end_dt
+
+    # Subtract two weeks and set to 23:59:59
+    for key, end_dt in cutoff_map.items():
+        cutoff_map[key] = (end_dt - timedelta(weeks=2)).replace(
+            hour=23, minute=59, second=59
+        )
+
+    # 2) VCALENDAR header
+    cal = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "CALSCALE:GREGORIAN"
+        "CALSCALE:GREGORIAN",
+        "PRODID:-//Danial Changez//Guelph Student Schedule Exporter v1.0//EN",
     ]
-    
-    for ev in events:
-        # Parse dates and times
-        start_dt = datetime.strptime(
-            f"{ev['StartDate']} {ev['StartTime']}",
-            "%m/%d/%Y %I:%M %p"
-        )
-        end_dt   = datetime.strptime(
-            f"{ev['StartDate']} {ev['EndTime']}",
-            "%m/%d/%Y %I:%M %p"
-        )
-        
-        # Build BYDAY from DaysOfWeek string
-        dow = ev.get("DaysOfWeek", "")
-        bydays = []
-        if "Th" in dow:
-            bydays.append("TH")
-            dow = dow.replace("Th", "")
-        mapping = {"M":"MO","T":"TU","W":"WE","F":"FR"}
-        for char, code in mapping.items():
-            if char in dow:
-                bydays.append(code)
-        byday_str = ",".join(bydays)
 
-        until_dt = datetime.strptime(ev['EndDate'], "%m/%d/%Y") + timedelta(hours=23, minutes=59, seconds=59)
-        uid = uuid.uuid4().hex + "@schedule"
-        
-        cal_lines += [
+    # 3) Build each VEVENT
+    for ev in events:
+        # Skip online/no-time rows
+        if not ev['StartTime'] or not ev['EndTime']:
+            continue
+
+        # Parse the event’s start/end
+        start_dt = datetime.strptime(
+            f"{ev['StartDate']} {ev['StartTime']}", "%m/%d/%Y %I:%M %p"
+        )
+        end_dt = datetime.strptime(
+            f"{ev['StartDate']} {ev['EndTime']}", "%m/%d/%Y %I:%M %p"
+        )
+
+        # Build BYDAY rule
+        dow = ev['DaysOfWeek']
+        days = []
+        if 'Th' in dow:
+            days.append('TH')
+            dow = dow.replace('Th', '')
+        for ch, code in {'M':'MO','T':'TU','W':'WE','F':'FR'}.items():
+            if ch in dow:
+                days.append(code)
+        byday_str = ','.join(days)
+
+        # Choose UNTIL: two-week cutoff for non-exam, otherwise fallback to term end
+        key = (ev['CourseName'], ev['SectionNumber'])
+        if ev['InstructionalMethod'] != 'EXAM' and key in cutoff_map:
+            until_dt = cutoff_map[key]
+        else:
+            # Fallback to original EndDate at 23:59:59
+            until_dt = datetime.strptime(ev['EndDate'], "%m/%d/%Y")
+            until_dt = until_dt.replace(hour=23, minute=59, second=59)
+
+        # DESCRIPTION
+        desc = (
+            f"Instructor(s): {', '.join(ev['Instructors'])}\\n"
+            f"Credits: {ev['Credits']}"
+        )
+
+        # Append the VEVENT
+        cal += [
             "BEGIN:VEVENT",
-            f"UID:{uid}",
+            f"UID:{uuid.uuid4().hex}@schedule",
             f"DTSTAMP:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
             f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%S')}",
             f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}",
             f"RRULE:FREQ=WEEKLY;BYDAY={byday_str};UNTIL={until_dt.strftime('%Y%m%dT%H%M%S')}",
             f"SUMMARY:{ev['InstructionalMethod']} {ev['CourseName']}*{ev['SectionNumber']}",
-            f"DESCRIPTION:Instructor(s): {', '.join(ev['Instructors'])}\\nCredits: {ev['Credits']}",
+            f"DESCRIPTION:{desc}",
             f"LOCATION:{ev['Location']}",
-            "END:VEVENT"
+            "END:VEVENT",
+            "",
         ]
 
-    cal_lines.append("END:VCALENDAR")
-    
-    with open(output_file, "w", encoding="UTF-8") as f:
-        f.write("\n".join(cal_lines))
+    # Close VCALENDAR
+    if cal and cal[-1] == "":
+        cal.pop()
+    cal.append("END:VCALENDAR")
+
+    # Write to file
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(cal))
 
 def main():
     start_time = time.perf_counter()
@@ -170,12 +213,16 @@ def main():
     # Extract the raw list of course dicts
     courses = extract_courses(html, term)
     sorted_results = sorted_courses(courses)
-    ics_path = "../schedule.ics"
+    
+    with open("../res/courses.json", "w", encoding="UTF-8") as f:
+        json.dump(sorted_results, f, indent=2)
+    
+    ics_path = "../Schedule.ics"
     generate_ics(sorted_results, ics_path)
     
     end_time = time.perf_counter()
     execution_time = end_time - start_time
     print(f"Wrote {len(courses)} courses to {ics_path} in {execution_time:.2f} seconds")
-        
+
 if __name__ == "__main__":
     main()
