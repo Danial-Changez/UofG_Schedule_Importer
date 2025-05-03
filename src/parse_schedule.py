@@ -175,7 +175,7 @@ def generate_ics(events: list[dict], output_file: str):
 
         # DESCRIPTION
         desc = (
-            f"Instructor(s): {', '.join(ev['Instructors'])}\\n"
+            f"Instructor(s): {' | '.join(ev['Instructors'])}\\n"
             f"Credits: {ev['Credits']}"
         )
 
