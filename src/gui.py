@@ -7,7 +7,7 @@ def run_schedule(term: str):
         html = fetch_page_info(term)
         courses = extract_courses(html, term)
         parsed = sorted_courses(courses)
-        output_path = "../Schedule.ics"
+        output_path = "../res/Schedule.ics"
         
         generate_ics(parsed, output_path)
         
