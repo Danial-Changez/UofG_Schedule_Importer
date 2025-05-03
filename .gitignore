@@ -1,3 +1,4 @@
 prod/*
-res/*
 prod.zip
+res/*
+src/__pycache__
