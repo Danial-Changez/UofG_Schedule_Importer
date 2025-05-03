@@ -1,13 +1,3 @@
-Schedule.pdf
-Schedule.txt
-Schedule.ics
-Kyline_Schedule.pdf
-W23_Schedule.pdf
-test.sh
-debug.log
-courses.json
+prod/*
+res/*
 prod.zip
-prod/__pycache__
-prod/build
-prod/dist
-prod/gui.spec
