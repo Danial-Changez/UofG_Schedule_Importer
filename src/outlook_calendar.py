@@ -8,7 +8,7 @@ from datetime import datetime
 from icalendar import Calendar
 
 # === CONFIG ===
-CLIENT_ID = '3751d727-01d8-4cf3-8b3b-895f9e107b66'  # Replace with actual Azure App ID
+CLIENT_ID = 'xxx-xxx-...'  # Replace with actual Azure App ID (Removed for security purposes for now)
 AUTHORITY = 'https://login.microsoftonline.com/common'
 SCOPES = ['https://graph.microsoft.com/Calendars.ReadWrite']
 TOKEN_PATH = '../res/outlook_token.json'
@@ -91,7 +91,7 @@ def import_ics_to_outlook(token, calendar_id, ics_file_path):
     tz = pytz.timezone("America/Toronto")
     created = 0
 
-    with open(ics_file_path, 'rb') as f:
+    with open(ics_file_path, 'r', encoding='UTF-8') as f:
         cal = Calendar.from_ical(f.read())
 
     for component in cal.walk():
