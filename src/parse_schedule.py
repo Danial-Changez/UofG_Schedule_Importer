@@ -10,12 +10,30 @@ import json
 from datetime import datetime, timedelta, timezone
 import uuid
 import time
+import tkinter as tk
 
 def fetch_page_info(term: str) -> str:
+    url = f"https://colleague-ss.uoguelph.ca/Student/Planning/DegreePlans/PrintSchedule?termId={term}"
     
-    # Configure chrome to suppress GPU and reduce logging data
+    # Get display resolution
+    root = tk.Tk()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    root.destroy
+    
+    # Calculate center of screen and a percentage of display resolution
+    percentage = 0.70
+    width = int(screen_width * percentage)
+    height = int(screen_height * percentage)
+    x = (screen_width - width) // 2
+    y = (screen_height - height) // 2
+    
+    # Configure chrome to open page as an app and reduce logging data
     options = webdriver.ChromeOptions()
-    options.add_argument("--disable-gpu")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_argument(f"--window-size={width},{height}")
+    options.add_argument(f"--window-position={x},{y}")
+    options.add_argument(f"--app={url}")
     options.add_argument("--log-level=3")
     
     # Start Chrome WebDriver
@@ -24,10 +42,8 @@ def fetch_page_info(term: str) -> str:
         options=options
     )
 
-    url = f"https://colleague-ss.uoguelph.ca/Student/Planning/DegreePlans/PrintSchedule?termId={term}"
     try:
         # Open the schedule URL and wait (up to 10 minutes) for MFA/login
-        driver.get(url)
         WebDriverWait(driver, 600).until(
             EC.url_contains("/PrintSchedule")
         )
@@ -54,8 +70,8 @@ def extract_courses(html: str, term: str) -> list[dict]:
 
     # Grab the script tag text with "var result"
     script = next(
-        (s.string for s in soup.find_all('script') 
-        if s.string and s.string.strip().startswith("var result")),
+        (s.text for s in soup.find_all('script') 
+        if s.text and s.text.strip().startswith("var result")),
         None
     )
     if not script: 
