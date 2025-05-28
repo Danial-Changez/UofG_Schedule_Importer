@@ -2,6 +2,7 @@ import customtkinter as ctk
 import threading
 from parse_schedule import *
 from google_calendar import *
+from outlook_calendar import *
 
 class App(ctk.CTk):
     def __init__(self):
@@ -15,6 +16,7 @@ class App(ctk.CTk):
         # Variables
         self.term_var = ctk.StringVar()
         self.import_to_gcal = ctk.BooleanVar(value=False)
+        self.import_to_ocal = ctk.BooleanVar(value=False)
 
         # Layout
         ctk.CTkLabel(self, text="Enter Term Code:").pack(pady=(20, 5))
@@ -25,6 +27,10 @@ class App(ctk.CTk):
         self.radio = ctk.CTkCheckBox(self, text="Import to Google Calendar", variable=self.import_to_gcal)
         self.radio.pack(pady=5)
 
+        # Outlook Calendar radio button
+        self.radio = ctk.CTkCheckBox(self, text="Import to Outlook Calendar", variable=self.import_to_gcal)
+        self.radio.pack(pady=5)
+
         # Run button
         self.button = ctk.CTkButton(self, text="Run Parser", command=self.start_task)
         self.button.pack(pady=10)
@@ -32,7 +38,7 @@ class App(ctk.CTk):
         self.status_label = ctk.CTkLabel(self, text="")
         self.status_label.pack(pady=5)
 
-    def run_schedule(self, term: str, import_to_gcal: bool):
+    def run_schedule(self, term: str, import_to_gcal: bool, import_to_ocal: bool):
         try:
             html = fetch_page_info(term)
             courses = extract_courses(html, term)
@@ -45,6 +51,11 @@ class App(ctk.CTk):
                 calendar_id = get_or_create_calendar(service)
                 import_ics_to_calendar(service, calendar_id, output_path)
 
+            if import_to_ocal:
+                service = authenticate_outlook()
+                calendar_id = get_or_create_outlook_calendar(service)
+                import_ics_to_outlook(service, calendar_id, output_path)
+                
             return f"✔ Parsed {len(parsed)} meetings → {output_path}"
         except Exception as e:
             return f"❌ Error: {str(e)}"
@@ -55,7 +66,7 @@ class App(ctk.CTk):
 
         def worker():
             term = self.term_var.get().strip().upper() or "W24"
-            result = self.run_schedule(term, self.import_to_gcal.get())
+            result = self.run_schedule(term, self.import_to_gcal.get(), self.import_to_ocal.get())
             self.status_label.configure(text=result)
             self.button.configure(state="normal", text="Run Parser")
 
