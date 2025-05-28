@@ -46,7 +46,7 @@ def get_or_create_calendar(service, calendar_name='UofG Schedule'):
 
 def import_ics_to_calendar(service, calendar_id, ics_file_path):
     """Parse .ics file and insert events into the target calendar."""
-    with open(ics_file_path, 'rb') as f:
+    with open(ics_file_path, 'r', encoding='UTF-8') as f:
         cal = Calendar.from_ical(f.read())
 
     tz = pytz.timezone('America/Toronto')
