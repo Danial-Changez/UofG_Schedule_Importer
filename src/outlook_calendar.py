@@ -8,9 +8,9 @@ from datetime import datetime
 from icalendar import Calendar
 
 # === CONFIG ===
-CLIENT_ID = 'xxx-xxx-...'  # Replace with actual Azure App ID (Removed for security purposes for now)
-AUTHORITY = 'https://login.microsoftonline.com/common'
-SCOPES = ['https://graph.microsoft.com/Calendars.ReadWrite']
+CLIENT_ID = '3751d727-01d8-4cf3-8b3b-895f9e107b66'  # Replace with actual Azure App ID (Removed for security purposes for now)
+AUTHORITY = 'https://login.microsoftonline.com/2dc6a781-c713-4a93-8cb0-258bef89a7b3'
+SCOPES = ['Calendars.ReadWrite']
 TOKEN_PATH = '../res/outlook_token.json'
 ICS_PATH = '../res/Schedule.ics'
 GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
@@ -30,6 +30,10 @@ def authenticate_outlook():
 
     if 'access_token' not in token_data:
         raise Exception("❌ Authentication failed.")
+
+    # Save token data for debugging and reuse
+    with open(TOKEN_PATH, 'w', encoding='utf-8') as f:
+        json.dump(token_data, f, indent=2)
 
     return token_data['access_token']
 

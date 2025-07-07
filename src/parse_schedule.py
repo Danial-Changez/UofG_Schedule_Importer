@@ -41,7 +41,7 @@ def fetch_page_info(term: str) -> str:
         service=ChromeService(ChromeDriverManager().install()), 
         options=options
     )
-
+    
     try:
         # Open the schedule URL and wait (up to 10 minutes) for MFA/login
         WebDriverWait(driver, 600).until(

@@ -10,7 +10,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
 
-        self.title("UofG Schedule to ICS")
+        self.title("Schedule Importer")
         self.geometry("400x260")
 
         # Variables
@@ -24,12 +24,12 @@ class App(ctk.CTk):
         self.term_entry.pack(pady=5)
 
         # Google Calendar radio button
-        self.radio = ctk.CTkCheckBox(self, text="Import to Google Calendar", variable=self.import_to_gcal)
-        self.radio.pack(pady=5)
+        self.gcal_checkbox = ctk.CTkCheckBox(self, text="Import to Google Calendar", variable=self.import_to_gcal)
+        self.gcal_checkbox.pack(pady=5)
 
         # Outlook Calendar radio button
-        self.radio = ctk.CTkCheckBox(self, text="Import to Outlook Calendar", variable=self.import_to_gcal)
-        self.radio.pack(pady=5)
+        self.ocal_checkbox = ctk.CTkCheckBox(self, text="Import to Outlook Calendar", variable=self.import_to_ocal)
+        self.ocal_checkbox.pack(pady=5)
 
         # Run button
         self.button = ctk.CTkButton(self, text="Run Parser", command=self.start_task)

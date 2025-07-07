@@ -11,23 +11,32 @@ from googleapiclient.discovery import build
 # Google Calendar API scope
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-def authenticate_google(creds_file='../res/credentials.json', token_file='../res/token.json'):
+def authenticate_google():
     """Authenticate the user and return an authorized Google Calendar service."""
     creds = None
-    if os.path.exists(token_file):
-        creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+    CREDENTIALS_PATH = '../res/credentials.json'
+    TOKEN_PATH = '../res/token.json'
+    SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+    # Check for credentials.json
+    if not os.path.exists(CREDENTIALS_PATH):
+        raise FileNotFoundError(
+            f"credentials.json not found at {CREDENTIALS_PATH}. Please provide your Google API credentials."
+        )
+
+    # If token.json exists, load it
+    if os.path.exists(TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    # If not, run OAuth flow and save token.json
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(creds_file, SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
             creds = flow.run_local_server(port=0)
-
-        # Save refreshed credentials
-        with open(token_file, 'w') as token:
+        # Save the credentials for the next run
+        with open(TOKEN_PATH, 'w') as token:
             token.write(creds.to_json())
-
     return build('calendar', 'v3', credentials=creds)
 
 def get_or_create_calendar(service, calendar_name='UofG Schedule'):
