@@ -18,8 +18,14 @@
     "page": "options.html",
     "open_in_tab": false
   },
+  "icons": {
+    "128": "icons/logo.png"
+  },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/logo.png"
+    }
   },
   "oauth2": {
     "client_id": "606197249226-7iavlu136743u7qa7oht9r073ntfnpcj.apps.googleusercontent.com",
