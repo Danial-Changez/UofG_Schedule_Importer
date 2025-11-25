@@ -1,0 +1,14 @@
+{
+  "name": "guelph-schedule-exporter",
+  "version": "1.0.0",
+  "description": "Export UofG Schedules to ICS/Google/Outlook",
+  "type": "module",
+  "scripts": {
+    "test": "mocha \"tests/*.spec.js\" --exit"
+  },
+  "devDependencies": {
+    "chai": "^6.2.1",
+    "mocha": "^11.7.5"
+  },
+  "private": true
+}

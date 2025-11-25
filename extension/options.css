@@ -1,0 +1,95 @@
+:root {
+  --bg: #0c0b0b;
+  --card: #161515;
+  --muted: #d3c6b5;
+  --text: #f8f2e8;
+  --accent: #c20430; /* Gryphon red */
+  --accent-2: #ffb81c; /* Gryphon gold */
+}
+body {
+  font-family: Inter, Segoe UI, system-ui, Arial, sans-serif;
+  background: radial-gradient(
+      circle at 20% 20%,
+      rgba(194, 4, 48, 0.12),
+      transparent 30%
+    ),
+    linear-gradient(180deg, #0c0b0b, #120f0f);
+  color: var(--text);
+  margin: 0;
+  padding: 12px;
+}
+.root {
+  width: 420px;
+  background: linear-gradient(180deg, #161515, #1e1a1a);
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 184, 28, 0.18);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+.field label {
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  letter-spacing: 0.2px;
+}
+.field input {
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 184, 28, 0.25);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.field input:focus {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(255, 184, 28, 0.16);
+  outline: none;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+button {
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 184, 28, 0.35);
+  background: var(--accent);
+  color: #f8f2e8;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+  filter: saturate(1.05);
+}
+button:active {
+  transform: translateY(0);
+}
+.status {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.help-view {
+  display: none;
+  padding-top: 6px;
+}
+.help-view h2 {
+  margin-top: 0;
+}
+.help-view p,
+.help-view ol {
+  color: var(--muted);
+  font-size: 13px;
+}
+.help-view .actions {
+  margin-top: 12px;
+}

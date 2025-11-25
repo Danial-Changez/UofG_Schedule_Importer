@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Guelph Schedule Exporter",
+  "version": "1.0",
+  "description": "Export your UofG schedule to ICS, Google, or Outlook Calendar.",
+  "permissions": ["scripting", "activeTab", "identity", "storage"],
+  "host_permissions": [
+    "https://colleague-ss.uoguelph.ca/*",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*",
+    "https://login.microsoftonline.com/*",
+    "https://graph.microsoft.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "oauth2": {
+    "client_id": "606197249226-7iavlu136743u7qa7oht9r073ntfnpcj.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/calendar"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://colleague-ss.uoguelph.ca/*"],
+      "js": ["src/content.js"]
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "Terms": [
+    {
+      "Code": "F25",
+      "Description": "Fall 2025 (medium sample)",
+      "StartDate": "2025-09-04T00:00:00",
+      "EndDate": "2025-12-12T00:00:00",
+      "PlannedCourses": [
+        {
+          "Section": {
+            "CourseName": "CIS*2500",
+            "Number": "101",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Alice Example"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "LEC",
+                "StartTime": "9:00 AM",
+                "EndTime": "10:20 AM",
+                "DaysOfWeek": "MWF",
+                "MeetingLocation": "ENG 120",
+                "StartDateString": "9/8/2025",
+                "EndDateString": "12/12/2025"
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "BIOL*1500",
+            "Number": "201",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Dr. Z"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "LAB",
+                "StartTime": "1:00 PM",
+                "EndTime": "3:00 PM",
+                "DaysOfWeek": "T",
+                "MeetingLocation": "LAB 2",
+                "StartDateString": "9/9/2025",
+                "EndDateString": "12/12/2025"
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "ENGG*2000",
+            "Number": "005",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Eng Prof"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "TUT",
+                "StartTime": "11:00 AM",
+                "EndTime": "12:00 PM",
+                "DaysOfWeek": "Th",
+                "MeetingLocation": "ENG 220",
+                "StartDateString": "9/8/2025",
+                "EndDateString": "12/12/2025"
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "MATH*1100",
+            "Number": "201",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Math Prof"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "TBD",
+                "StartTime": null,
+                "EndTime": null,
+                "DaysOfWeek": "",
+                "MeetingLocation": ""
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "Code": "W26",
+      "Description": "Winter 2026 (medium sample)",
+      "StartDate": "2026-01-05T00:00:00",
+      "EndDate": "2026-04-15T00:00:00",
+      "PlannedCourses": [
+        {
+          "Section": {
+            "CourseName": "HIST*2100",
+            "Number": "001",
+            "MinimumCredits": 0.5,
+            "Faculty": ["History Prof"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "LEC",
+                "StartTime": "1:00 PM",
+                "EndTime": "2:20 PM",
+                "DaysOfWeek": "TR",
+                "MeetingLocation": "HIS 10",
+                "StartDateString": "1/6/2026",
+                "EndDateString": "4/15/2026"
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "PHYS*1100",
+            "Number": "002",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Phys Prof"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "EXAM",
+                "StartTime": "12:00 PM",
+                "EndTime": "3:00 PM",
+                "DaysOfWeek": "",
+                "MeetingLocation": "EXAM HALL",
+                "StartDateString": "4/20/2026",
+                "EndDateString": "4/20/2026"
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "CHEM*1010",
+            "Number": "010",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Chem Prof"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "LAB",
+                "StartTime": "8:30 AM",
+                "EndTime": "10:30 AM",
+                "DaysOfWeek": "W",
+                "MeetingLocation": "CHEM LAB",
+                "StartDateString": "1/7/2026",
+                "EndDateString": "4/15/2026"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

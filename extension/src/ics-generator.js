@@ -1,0 +1,360 @@
+// ICS generator: convert normalized events into iCalendar text.
+// - Exposes helpers to build VEVENTS and full VCALENDAR output.
+
+/**
+ * Parse a local date string (MM/DD/YYYY) and a time string (e.g. '9:00 AM')
+ * into a JavaScript Date in the local timezone. Returns null on parse
+ * failure.
+ * @param {string} dateStr - Date in MM/DD/YYYY format.
+ * @param {string} timeStr - Time in 'h:mm AM/PM' or 'HH:MM' format.
+ * @returns {Date|null}
+ */
+function parseDateTime(dateStr, timeStr) {
+  // Deterministic parser: expects dateStr in MM/DD/YYYY and time like "9:00 AM"
+  if (!dateStr || !timeStr) return null;
+  const parts = dateStr.split("/").map((s) => parseInt(s, 10));
+  if (parts.length !== 3) return null;
+  const m = parts[0];
+  const d = parts[1];
+  const y = parts[2];
+
+  // Parse time
+  const t = timeStr.trim();
+  const tm = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  let hour = 0,
+    minute = 0;
+  if (tm) {
+    hour = parseInt(tm[1], 10);
+    minute = parseInt(tm[2], 10);
+    const ampm = (tm[3] || "").toUpperCase();
+    if (ampm === "PM" && hour !== 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+  } else {
+    // fallback: try HH:MM 24h
+    const tm2 = t.match(/^(\d{1,2}):(\d{2})$/);
+    if (tm2) {
+      hour = parseInt(tm2[1], 10);
+      minute = parseInt(tm2[2], 10);
+    }
+  }
+
+  return new Date(y, m - 1, d, hour, minute, 0, 0);
+}
+
+/**
+ * Format a Date object to an iCalendar DATE-TIME string: YYYYMMDDTHHMMSS
+ * Optionally append 'Z' for UTC.
+ * @param {Date} dt
+ * @param {boolean} [utc=false]
+ * @returns {string}
+ */
+function formatICSDatetime(dt, utc = false) {
+  // Format as YYYYMMDDTHHMMSS or with trailing Z if UTC
+  const pad = (n) => String(n).padStart(2, "0");
+  const year = dt.getFullYear();
+  const month = pad(dt.getMonth() + 1);
+  const day = pad(dt.getDate());
+  const hour = pad(dt.getHours());
+  const min = pad(dt.getMinutes());
+  const sec = pad(dt.getSeconds());
+  return `${year}${month}${day}T${hour}${min}${sec}${utc ? "Z" : ""}`;
+}
+
+function buildCalendarLines(events) {
+  // Build calendar lines and recurrence UNTIL cutoffs for non-exam items.
+  // Use numeric timestamps for faster comparisons and cache parsed end dates.
+  const cutoffMap = new Map(); // key -> timestamp (ms)
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (ev.InstructionalMethod === "EXAM") continue;
+    const cname = ev.CourseName;
+    const snum = ev.SectionNumber;
+    if (!cname || !snum) continue;
+    const key = `${cname}||${snum}`;
+    const endDate = ev.EndDate; // expected mm/dd/YYYY
+    if (!endDate) continue;
+    const parts = endDate.split("/").map((s) => parseInt(s, 10));
+    if (parts.length !== 3) continue;
+    const endTs = new Date(parts[2], parts[0] - 1, parts[1]).getTime();
+    const existing = cutoffMap.get(key);
+    if (!existing || endTs > existing) cutoffMap.set(key, endTs);
+  }
+
+  // subtract 14 days (in ms) and set time to 23:59:59
+  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+  for (const [k, ts] of cutoffMap.entries()) {
+    const nTs = ts - TWO_WEEKS_MS + (23 * 3600 + 59 * 60 + 59) * 1000;
+    cutoffMap.set(k, nTs);
+  }
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "CALSCALE:GREGORIAN",
+    "PRODID:-//Danial Changez//Guelph Student Schedule Exporter v1.0//EN",
+  ];
+
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (!ev.StartTime || !ev.EndTime) continue;
+
+  let startDt = parseDateTime(ev.StartDate, ev.StartTime);
+  let endDt = parseDateTime(ev.StartDate, ev.EndTime);
+  if (!startDt || !endDt) continue;
+  // duration in ms between original start and end
+  const origStartTs = startDt.getTime();
+  const origEndTs = endDt.getTime();
+  const durationMs = origEndTs - origStartTs;
+
+    // Build BYDAY from DaysOfWeek (case-insensitive). Support compact forms like "MWF",
+    // "TTh"/"TTH" etc. Preserve token order and handle 'Th' as a two-letter token.
+  const tokenRegex = /Th|M|T|W|F/g;
+  const tokenToBy = { M: "MO", T: "TU", W: "WE", Th: "TH", F: "FR" };
+  const tokens = (ev.DaysOfWeek.match(tokenRegex) || []).map((t) => t.trim());
+  const days = tokens.map((t) => tokenToBy[t]).filter(Boolean);
+  const byday = days.join(",");
+
+    const key = ev.CourseName && ev.SectionNumber ? `${ev.CourseName}||${ev.SectionNumber}` : null;
+    let untilDtTs;
+  if (ev.InstructionalMethod !== "EXAM" && key && cutoffMap.has(key)) {
+      untilDtTs = cutoffMap.get(key);
+    } else {
+      const ed = ev.EndDate;
+      if (ed) {
+        const p = ed.split("/").map((s) => parseInt(s, 10));
+        if (p.length === 3) {
+          untilDtTs =
+            new Date(p[2], p[0] - 1, p[1]).getTime() +
+            (23 * 3600 + 59 * 60 + 59) * 1000;
+      // recompute endDt based on original duration to keep same length
+      endDt = new Date(startDt.getTime() + durationMs);
+        } else untilDtTs = startDt.getTime();
+      } else untilDtTs = startDt.getTime();
+    }
+
+    const untilDt = new Date(untilDtTs);
+
+    // If the event is recurring on specific weekdays, set DTSTART to the
+    // first occurrence on or after the provided StartDate that matches BYDAY.
+    if (byday) {
+      // Map BYDAY tokens to JS weekday numbers (0=Sun..6=Sat)
+      const bydayMap = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
+      const targetDays = byday
+        .split(",")
+        .map((d) => bydayMap[d])
+        .filter((n) => n != null);
+      if (targetDays.length > 0) {
+        // Advance startDt up to 7 days to match one of targetDays
+        let attempts = 0;
+        while (!targetDays.includes(startDt.getDay()) && attempts < 7) {
+          startDt = new Date(startDt.getTime() + 24 * 3600 * 1000);
+          attempts++;
+        }
+      }
+    }
+
+    const desc = `Instructor(s): ${(ev.Instructors || []).join(
+      " | "
+    )}\nCredits: ${ev.Credits || ""}`;
+
+    lines.push("BEGIN:VEVENT");
+    lines.push(`UID:${cryptoRandomId()}@schedule`);
+    lines.push(`DTSTAMP:${formatICSDatetime(new Date(), true)}`);
+    lines.push(`DTSTART:${formatICSDatetime(startDt)}`);
+    lines.push(`DTEND:${formatICSDatetime(endDt)}`);
+    if (byday)
+      lines.push(
+        `RRULE:FREQ=WEEKLY;BYDAY=${byday};UNTIL=${formatICSDatetime(untilDt)}`
+      );
+    lines.push(
+      `SUMMARY:${ev.InstructionalMethod || ""} ${ev.CourseName || ""}*${
+        ev.SectionNumber || ""
+      }`
+    );
+    lines.push(`DESCRIPTION:${desc}`);
+    lines.push(`LOCATION:${ev.Location || ""}`);
+    lines.push("END:VEVENT");
+    lines.push("");
+  }
+
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  lines.push("END:VCALENDAR");
+  return lines;
+}
+
+/**
+ * Return a cryptographically-random identifier suitable for use as a UID
+ * in VEVENTs. Falls back to Math.random if crypto is unavailable.
+ * @returns {string}
+ */
+function cryptoRandomId() {
+  // Fallback UID generator using random numbers
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    return Array.from(arr)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/**
+ * Normalize the page-provided raw result into an array of event objects.
+ * Each event contains fields such as CourseName, SectionNumber, StartDate,
+ * StartTime, EndTime, DaysOfWeek, Instructors, Location, Credits, etc.
+ * @export
+ * @param {Object} rawData - The page 'result' object.
+ * @param {Array<string>} [selectedTermCodes] - Filter terms by these codes.
+ * @returns {Array<Object>} Normalized events ready for export/import.
+ */
+export function generateEventsFromRawData(rawData, selectedTermCodes) {
+  // Produce a normalized events array from the raw page data. This is useful
+  // for provider imports which create events directly via API calls.
+  let terms = rawData.Terms || [];
+  if (Array.isArray(selectedTermCodes) && selectedTermCodes.length > 0) {
+    const set = new Set(selectedTermCodes.map(String));
+    terms = terms.filter((t) => set.has(String(t.Code)));
+  }
+  const planned = [];
+  // Prefer the student's registered/active sections when possible.
+  terms.forEach((t) => {
+    const pcs = t.PlannedCourses || [];
+    const activeSet = new Set((t.ActiveSectionIds || []).map(String));
+
+    // If at least one course marks HasRegisteredSection, prefer only registered ones
+    const anyHasRegistered = pcs.some(
+      (p) =>
+        p.HasRegisteredSection || (p.Section && p.Section.HasRegisteredSection)
+    );
+
+    pcs.forEach((p) => {
+      const sec = p.Section || {};
+      const secId = sec.Id || sec.SectionId || p.SectionId || "";
+      const secHasRegistered = !!(
+        p.HasRegisteredSection || sec.HasRegisteredSection
+      );
+
+      if (activeSet.size > 0) {
+        // Use ActiveSectionIds when available (these are the user's registered section ids)
+        if (secId && activeSet.has(String(secId))) planned.push(p);
+        else if (secHasRegistered) planned.push(p);
+        // otherwise skip other sections in the same term
+      } else if (anyHasRegistered) {
+        // If some courses explicitly mark registered, only include those
+        if (secHasRegistered) planned.push(p);
+      } else {
+        // No clear registration markers — fall back to including all planned courses
+        planned.push(p);
+      }
+    });
+  });
+
+  const events = [];
+  planned.forEach((entry) => {
+    const sec = entry.Section || {};
+    const base = {
+      CourseName: sec.CourseName,
+      SectionNumber: sec.Number,
+      Credits: sec.MinimumCredits,
+      Instructors: sec.Faculty || [],
+    };
+
+    // Support two meeting shapes: PlannedMeetings (array) or Meetings (legacy)
+    const meetings = sec.PlannedMeetings || sec.Meetings || [];
+    meetings.forEach((meeting) => {
+      // Normalize fields: accept InstructionalMethod or InstructionalMethodCode
+      const method =
+        meeting.InstructionalMethod || meeting.InstructionalMethodCode || "";
+
+      // Location may appear as MeetingLocation or Room or Location
+      const loc = (
+        meeting.MeetingLocation ||
+        meeting.Room ||
+        meeting.Location ||
+        ""
+      ).trim();
+
+      // Dates: prefer StartDateString/EndDateString, otherwise ISO StartDate/EndDate
+      const startDateStr =
+        meeting.StartDateString ||
+        (meeting.StartDate ? formatISODateForMDY(meeting.StartDate) : null);
+      const endDateStr =
+        meeting.EndDateString ||
+        (meeting.EndDate ? formatISODateForMDY(meeting.EndDate) : null);
+
+      // Times: some fixtures may include StartTimeHour/Minute or RawStartTime
+      const startTime =
+        meeting.StartTime ||
+        (meeting.StartTimeHour != null
+          ? `${String(meeting.StartTimeHour)}:${String(
+              meeting.StartTimeMinute || 0
+            ).padStart(2, "0")}`
+          : meeting.RawStartTime);
+      const endTime =
+        meeting.EndTime ||
+        (meeting.EndTimeHour != null
+          ? `${String(meeting.EndTimeHour)}:${String(
+              meeting.EndTimeMinute || 0
+            ).padStart(2, "0")}`
+          : meeting.RawEndTime);
+
+      // If both times are missing, skip (TBD or online/no-time)
+      if (!startTime || !endTime) return;
+
+      events.push({
+        ...base,
+        InstructionalMethod: method,
+        StartTime: startTime,
+        EndTime: endTime,
+        FormattedTime: meeting.FormattedTime,
+        DaysOfWeek: meeting.DaysOfWeek || meeting.Days || "",
+        Location: loc,
+        StartDate: startDateStr,
+        EndDate: endDateStr,
+        Instructors: base.Instructors,
+      });
+    });
+  });
+
+  // Helper: convert ISO date like 2025-09-08T00:00:00 to MM/DD/YYYY used by parser
+  function formatISODateForMDY(iso) {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return null;
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const yyyy = d.getFullYear();
+      return `${mm}/${dd}/${yyyy}`;
+    } catch (e) {
+      return null;
+    }
+  }
+  return events;
+}
+
+/**
+ * Build a full ICS calendar string from the page raw result by first
+ * normalizing events and then formatting them into iCalendar lines.
+ * @export
+ * @param {Object} rawData
+ * @param {Array<string>} [selectedTermCodes]
+ * @returns {string} ICS file content.
+ */
+export function generateICSFromRawData(rawData, selectedTermCodes) {
+  const events = generateEventsFromRawData(rawData, selectedTermCodes);
+  const lines = buildCalendarLines(events);
+  return lines.join("\n");
+}
+
+/**
+ * Convert an array of already-normalized events into an ICS string.
+ * @export
+ * @param {Array<Object>} events
+ * @returns {string}
+ */
+export function eventsToICS(events) {
+  // Backwards-compatible: accept already-normalized events
+  const lines = buildCalendarLines(events);
+  return lines.join("\n");
+}

@@ -1,0 +1,307 @@
+// Popup UI script: pulls schedule data from the active tab, then downloads ICS or forwards events to providers.
+import {
+  generateICSFromRawData,
+  generateEventsFromRawData,
+} from "./ics-generator.js";
+
+const dom = {
+  helpLink: document.getElementById("help-link"),
+  helpView: document.getElementById("helpView"),
+  closeHelp: document.getElementById("closeHelp"),
+  controls: document.querySelector(".controls"),
+  runBtn: document.getElementById("run-button"),
+  runSpinner: document.getElementById("run-spinner"),
+  runText: document.getElementById("run-text"),
+  termsList: document.getElementById("terms-list"),
+  status: document.getElementById("status"),
+};
+
+const storage = {
+  async get(keys) {
+    return new Promise((resolve, reject) =>
+      chrome.storage.local.get(keys, (items) => {
+        if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+        resolve(items);
+      })
+    );
+  },
+  async set(payload) {
+    return new Promise((resolve, reject) =>
+      chrome.storage.local.set(payload, () => {
+        if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+        resolve();
+      })
+    );
+  },
+};
+
+function setStatus(msg) {
+  dom.status.innerText = msg;
+}
+
+function setRunState(running) {
+  dom.runBtn.disabled = running;
+  dom.runSpinner.style.display = running ? "inline-block" : "none";
+  dom.runText.innerText = running ? "Running..." : "Run Selected";
+}
+
+function toggleHelp(show) {
+  const visible = show === true;
+  dom.helpView.setAttribute("aria-hidden", visible ? "false" : "true");
+  dom.helpView.style.display = visible ? "block" : "none";
+  dom.controls.style.display = visible ? "none" : "";
+  storage.set({ popupLastView: visible ? "help" : "settings" });
+  if (visible) dom.helpView.style.animation = "help-open 180ms ease forwards";
+}
+
+async function restoreLastView() {
+  try {
+    const { popupLastView } = await storage.get(["popupLastView"]);
+    if (popupLastView === "help") toggleHelp(true);
+  } catch (e) {
+    // ignore storage failures
+  }
+}
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+async function requestScheduleFromPage() {
+  const tab = await getActiveTab();
+  return new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(tab.id, { action: "extractSchedule" }, (res) => {
+      if (chrome.runtime.lastError) {
+        reject(
+          new Error(
+            "No content script detected. Open the PrintSchedule page first."
+          )
+        );
+        return;
+      }
+      if (!res || !res.success || !res.data) {
+        reject(
+          new Error(res ? res.error || "Failed to extract schedule." : "No data")
+        );
+        return;
+      }
+      resolve(res.data);
+    });
+  });
+}
+
+function getSelectedTermCodes() {
+  return Array.from(
+    dom.termsList.querySelectorAll('input[type="checkbox"]:checked')
+  ).map((c) => c.value);
+}
+
+function syncOptionCards() {
+  ["chk-ics", "chk-google", "chk-outlook"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    const card = input.closest(".option-card");
+    const update = () => card?.classList.toggle("checked", input.checked);
+    input.addEventListener("change", update);
+    update();
+  });
+}
+
+function downloadICS(icsContent) {
+  const blob = new Blob([icsContent], { type: "text/calendar" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "schedule.ics";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderProviderResult(provider, result) {
+  const root = document.getElementById("results-root");
+  const id = `result-card-${provider}`;
+  let card = document.getElementById(id);
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "results-card";
+    card.id = id;
+    root.appendChild(card);
+  }
+  const title = provider === "google" ? "Google Calendar" : "Outlook Calendar";
+  const errors = result.errors || [];
+  card.innerHTML = `
+    <div class="results-header">
+      <div>
+        <div class="results-title">${title}</div>
+        <div class="results-meta">Created: ${result.created || 0} • Errors: ${errors.length}</div>
+      </div>
+      <div class="result-actions">
+        <button class="ghost" data-action="toggle" data-for="${id}">Details</button>
+        <button class="ghost" data-action="copy" data-json='${JSON.stringify(
+          result
+        ).replace(/'/g, "\\'")}'>Copy</button>
+      </div>
+    </div>
+    <div class="result-errors" style="display:none"></div>
+  `;
+
+  const errContainer = card.querySelector(".result-errors");
+  errContainer.innerHTML = errors
+    .map(
+      (e) => `<div class="result-error">${e.error || JSON.stringify(e)}</div>`
+    )
+    .join("");
+
+  card.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.onclick = () => {
+      const action = btn.getAttribute("data-action");
+      if (action === "toggle") {
+        const ec = card.querySelector(".result-errors");
+        ec.style.display = ec.style.display === "none" ? "block" : "none";
+      }
+      if (action === "copy") {
+        const j = btn.getAttribute("data-json");
+        navigator.clipboard
+          .writeText(j)
+          .then(() => setStatus("Result copied to clipboard"));
+      }
+    };
+  });
+}
+
+function pollImportJob(jobId, provider) {
+  setStatus(`Import started (${provider}). Job: ${jobId}`);
+  const check = async () => {
+    const resp = await new Promise((resolve) =>
+      chrome.runtime.sendMessage({ action: "queryJob", jobId }, resolve)
+    );
+    if (!resp) {
+      setStatus("No response from background when polling job");
+      return;
+    }
+    if (resp.status === "running") {
+      setStatus(`Job ${jobId} running (${provider}): ${resp.progress || 0}%`);
+      setTimeout(check, 1000);
+      return;
+    }
+    if (resp.status === "done") {
+      setStatus(`Import complete (${provider}).`);
+      renderProviderResult(provider, resp.result || { created: 0, errors: [] });
+      return;
+    }
+    if (resp.status === "failed") {
+      setStatus(`Import failed (${provider}): ${resp.error || "unknown"}`);
+      return;
+    }
+    setStatus(`Import job ${jobId} unknown state`);
+  };
+  check();
+}
+
+async function startProviderImport(provider, events) {
+  setStatus(`Sending events to ${provider} import...`);
+  const startResp = await new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(
+      { action: "startImport", provider, events },
+      (res) => {
+        if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+        resolve(res);
+      }
+    )
+  );
+  if (startResp && startResp.jobId) {
+    pollImportJob(startResp.jobId, provider);
+  } else {
+    setStatus(`Failed to start ${provider} import`);
+  }
+}
+
+async function loadTerms() {
+  setStatus("Detecting terms on page...");
+  try {
+    const data = await requestScheduleFromPage();
+    const terms = (data.Terms || []).slice().reverse();
+    dom.termsList.innerHTML = "";
+    terms.forEach((t) => {
+      const code = t.Code || t.TermCode || "";
+      const title = t.Name || t.Description || t.Title || code;
+      const id = `term-${code}`;
+      const wrapper = document.createElement("label");
+      wrapper.className = "option-card";
+      wrapper.style.padding = "8px";
+      wrapper.htmlFor = id;
+      wrapper.innerHTML = `
+        <input type="checkbox" id="${id}" value="${code}" />
+        <div>
+          <div class="label-title">${code}</div>
+          <div class="label-sub muted-note">${title}</div>
+        </div>`;
+      dom.termsList.appendChild(wrapper);
+      const inp = wrapper.querySelector("input");
+      inp.addEventListener("change", () => {
+        wrapper.classList.toggle("checked", inp.checked);
+      });
+    });
+
+    if (terms.length === 0) {
+      setStatus("No terms found on this page.");
+    } else {
+      setStatus("Terms loaded. Select desired terms or leave none to include all.");
+    }
+  } catch (e) {
+    setStatus(e.message || "Unable to load terms.");
+  }
+}
+
+async function handleRunClick() {
+  const doICS = document.getElementById("chk-ics").checked;
+  const doGCal = document.getElementById("chk-google").checked;
+  const doOCal = document.getElementById("chk-outlook").checked;
+
+  if (!doICS && !doGCal && !doOCal) {
+    setStatus("Select at least one action.");
+    return;
+  }
+
+  setRunState(true);
+  try {
+    setStatus("Requesting schedule data from page...");
+    const data = await requestScheduleFromPage();
+    const selectedTermCodes = getSelectedTermCodes();
+
+    if (doICS) {
+      const ics = generateICSFromRawData(data, selectedTermCodes);
+      downloadICS(ics);
+      setStatus("ICS file downloaded!");
+    }
+
+    if (doGCal || doOCal) {
+      const events = generateEventsFromRawData(data, selectedTermCodes);
+      if (doGCal) await startProviderImport("google", events);
+      if (doOCal) await startProviderImport("outlook", events);
+    }
+  } catch (e) {
+    setStatus(e.message || "Error running export.");
+  } finally {
+    setRunState(false);
+  }
+}
+
+function wireHelpLinks() {
+  dom.helpLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    toggleHelp(true);
+  });
+  dom.closeHelp.addEventListener("click", () => toggleHelp(false));
+}
+
+async function init() {
+  syncOptionCards();
+  wireHelpLinks();
+  dom.runBtn.addEventListener("click", handleRunClick);
+  await restoreLastView();
+  await loadTerms();
+}
+
+init();

@@ -1,0 +1,501 @@
+// Google provider: Calendar import helpers loaded into the service worker via importScripts.
+
+(function () {
+  /**
+   * Ensure the extension has a valid Google OAuth access token, validating calendar scope.
+   * @async
+   * @returns { Promise <{ authenticated: boolean, accessToken?: string }> } Authentication status and token if true.
+   */
+  async function ensureAuth() {
+    // Use chrome.identity exclusively: try non-interactive first.
+    if (typeof chrome !== "undefined" && chrome.identity.getAuthToken) {
+      try {
+        const token = await new Promise((res, rej) =>
+          chrome.identity.getAuthToken({ interactive: false }, (t) => {
+            if (chrome.runtime.lastError) return rej(chrome.runtime.lastError);
+            res(t);
+          })
+        );
+
+        if (token) {
+          // Validate token scopes via tokeninfo. If missing calendar scope, remove cached token
+          try {
+            const infoResp = await fetch(
+              `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(
+                token
+              )}`
+            );
+
+            if (infoResp.ok) {
+              const info = await infoResp.json();
+              const scopes = (info.scope || "").split(" ");
+
+              if (scopes.includes("https://www.googleapis.com/auth/calendar")) {
+                return { authenticated: true, accessToken: token };
+              } else {
+                // Remove cached token so interactive consent is shown next
+                if (chrome.identity.removeCachedAuthToken) {
+                  chrome.identity.removeCachedAuthToken({ token });
+                }
+                return { authenticated: false };
+              }
+            }
+          } catch (e) {
+            // Ignore tokeninfo errors and fallback to unauthenticated
+            return { authenticated: false };
+          }
+        }
+        return { authenticated: false };
+      } catch (e) {
+        return { authenticated: false };
+      }
+    }
+
+    // If chrome.identity is not available, fail authentication.
+    return { authenticated: false };
+  }
+
+  /**
+   * Remove a cached chrome.identity token to force re-consent or clear stale tokens.
+   * @async
+   * @returns {Promise<void>} Resolves when cache cleared.
+   */
+  async function clearCachedChromeToken() {
+    if (typeof chrome === "undefined" || !chrome.identity.getAuthToken) return;
+    try {
+      const token = await new Promise((res, rej) =>
+        chrome.identity.getAuthToken({ interactive: false }, (t) => {
+          if (chrome.runtime.lastError) return rej(chrome.runtime.lastError);
+          res(t);
+        })
+      );
+      if (token && chrome.identity.removeCachedAuthToken) {
+        chrome.identity.removeCachedAuthToken({ token });
+        console.log("Google: Cleared cached chrome token");
+      }
+    } catch (e) {
+      console.warn("Google: clearCachedChromeToken failed", e && e.message);
+    }
+  }
+
+  /**
+   * Call the Google Calendar REST API with optional accessToken override.
+   * @async
+   * @param {string} path - API path under calendar (e.g. 'calendars/...').
+   * @param {string} [method='GET'] - REST method.
+   * @param {Object|null} [body=null] - Request content.
+   * @param {string|null} [accessToken=null] - Explicit access token.
+   * @returns {Promise<Object>} Parsed JSON.
+   * @throws {Error} Error object with .status and .body for non-OK responses.
+   */
+  async function apiRequest(
+    path,
+    method = "GET",
+    body = null,
+    accessToken = null
+  ) {
+    const token = accessToken || (await ensureAuth()).accessToken;
+
+    if (!token) throw new Error("No access token");
+    const url = `https://www.googleapis.com/calendar/v3/${path}`;
+
+    // Mask token for logs: show first 6 and last 4 chars
+    const maskToken = (t) =>
+      t?.length > 10 ? `${t.slice(0, 6)}...${t.slice(-4)}` : "<No-Token>";
+    console.log("Google: apiRequest", {
+      url,
+      method,
+      body: body ? Object.keys(body) : null,
+      token: maskToken(token),
+    });
+
+    // Fetch with timeout to avoid indefinite hanging
+    const fetchWithTimeout = (resource, options = {}) => {
+      const { timeout = 15000 } = options;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      return fetch(resource, { ...options, signal: controller.signal })
+        .then((res) => {
+          clearTimeout(id);
+          return res;
+        })
+        .catch((err) => {
+          clearTimeout(id);
+          throw err;
+        });
+    };
+
+    const resp = await fetchWithTimeout(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : null,
+      timeout: 15000,
+    });
+
+    if (!resp.ok) {
+      // Attempt to parse JSON error body, fall back to text otherwise
+      let bodyText = null;
+      let bodyJson = null;
+
+      try {
+        bodyJson = await resp.json();
+      } catch (e) {
+        try {
+          bodyText = await resp.text();
+        } catch (e2) {
+          bodyText = "<Unable to read body>";
+        }
+      }
+
+      const err = new Error(`Google API error ${resp.status}`);
+      err.status = resp.status;
+      err.body = bodyJson || bodyText;
+
+      // If 401, try to fetch tokeninfo to help debug
+      if (resp.status === 401) {
+        try {
+          const ti = await fetch(
+            `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(
+              token
+            )}`
+          ).then((r) => (r.ok ? r.json() : null));
+          err.tokenInfo = ti;
+          console.warn("Google: tokenInfo for failing token", {
+            token: maskToken(token),
+            tokenInfo: ti,
+          });
+        } catch (tiErr) {
+          // Ignore tokeninfo failure
+        }
+      }
+      throw err;
+    }
+    return resp.json();
+  }
+
+  /**
+   * Convert a normalized event into a Google Calendar event resource.
+   * The normalized event is expected to contain StartDate, StartTime, EndTime,
+   * CourseName, Instructors, Location, DaysOfWeek, EndDate etc.
+   * @param {Object} ev - Normalized event object.
+   * @returns {Object} Google Calendar event resource.
+   */
+  function eventToGooglePayload(ev) {
+    const summary = `${ev.InstructionalMethod || ""} ${ev.CourseName || ""}*${
+      ev.SectionNumber || ""
+    }`.trim();
+
+    const description = `Instructor(s): ${(ev.Instructors || []).join(
+      " | "
+    )}\nCredits: ${ev.Credits || ""}`;
+    const location = ev.Location || "";
+
+    /**
+     * Build start and end local datetime strings from StartDate + StartTime
+     * Google Calendar accepts either a dateTime + timeZone or an all-day
+     * date. We will always provide dateTime and specify America/Toronto.
+     * @param {string} dateStr - Date string in M/D/YYYY or MM/DD/YYYY format.
+     * @param {string} timeStr - Time string in '9:00 AM' or '13:00' style.
+     * @returns {string} Local datetime string in 'YYYY-MM-DDTHH:MM:SS'.
+     */
+    function formatLocalDateTime(dateStr, timeStr) {
+      const [m, d, y] = dateStr.split("/").map((s) => parseInt(s, 10));
+      const dt = new Date(
+        `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(
+          2,
+          "0"
+        )} ${timeStr}`
+      );
+      const local = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(dt.getDate()).padStart(2, "0")}T${String(
+        dt.getHours()
+      ).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}:${String(
+        dt.getSeconds()
+      ).padStart(2, "0")}`;
+      return local;
+    }
+
+    const start = {
+      dateTime: formatLocalDateTime(ev.StartDate, ev.StartTime),
+      timeZone: "America/Toronto",
+    };
+    const end = {
+      dateTime: formatLocalDateTime(ev.StartDate, ev.EndTime),
+      timeZone: "America/Toronto",
+    };
+
+    const resource = { summary, description, location, start, end };
+
+    // Recurrence handling: convert DaysOfWeek + EndDate to RRULE
+    if (ev.DaysOfWeek) {
+      // Tokenize 'Th' before single-letter tokens so "TTh" -> ["T","Th"]
+      const tokenRegex = /Th|M|T|W|F/g;
+      const tokenToBy = { M: "MO", T: "TU", W: "WE", Th: "TH", F: "FR" };
+      const tokens = (ev.DaysOfWeek.match(tokenRegex) || []).map((t) =>
+        t.trim()
+      );
+      const days = tokens.map((t) => tokenToBy[t]).filter(Boolean);
+
+      if (ev.EndDate && days.length > 0) {
+        const [em, ed, ey] = ev.EndDate.split("/").map((s) => parseInt(s, 10));
+        const until = new Date(ey, em - 1, ed, 23, 59, 59);
+        const untilStr = `${until.getUTCFullYear()}${String(
+          until.getUTCMonth() + 1
+        ).padStart(2, "0")}${String(until.getUTCDate()).padStart(
+          2,
+          "0"
+        )}T${String(until.getUTCHours()).padStart(2, "0")}${String(
+          until.getUTCMinutes()
+        ).padStart(2, "0")}${String(until.getUTCSeconds()).padStart(2, "0")}Z`;
+        resource.recurrence = [
+          `RRULE:FREQ=WEEKLY;BYDAY=${days.join(",")};UNTIL=${untilStr}`,
+        ];
+      }
+    }
+
+    return resource;
+  }
+
+  /**
+   * Get a calendar by summary or create it (optional accessToken override).
+   * @async
+   * @param {string} [calendarName='UofG Schedule']
+   * @param {string|null} [accessToken=null]
+   * @returns {Promise<string>} calendarId
+   */
+  async function getOrCreateCalendar(
+    calendarName = "UofG Schedule",
+    accessToken = null
+  ) {
+    // List calendars and try to find by summary
+    const list = await apiRequest(
+      "users/me/calendarList",
+      "GET",
+      null,
+      accessToken
+    );
+    const existing = (list.items || []).find((c) => c.summary === calendarName);
+    if (existing) return existing.id;
+
+    // Create new calendar
+    const created = await apiRequest(
+      "calendars",
+      "POST",
+      { summary: calendarName },
+      accessToken
+    );
+    return created.id;
+  }
+
+  
+  /**
+   * Acquire an interactive Google OAuth access token via chrome.identity.
+   *
+   * @async
+   * @returns {Promise<{access_token:string}>} The acquired token object.
+   */
+  async function authenticate() {
+    // Prefer chrome.identity interactive flow when available
+    if (typeof chrome !== "undefined" && chrome.identity.getAuthToken) {
+      try {
+        const token = await new Promise((res, rej) =>
+          chrome.identity.getAuthToken({ interactive: true }, (t) => {
+            if (chrome.runtime.lastError) return rej(chrome.runtime.lastError);
+            res(t);
+          })
+        );
+        return { access_token: token };
+      } catch (e) {
+        throw new Error("Authentication failed: " + (e.message || e));
+      }
+    }
+    // If chrome.identity is not available, fail authentication.
+    throw new Error("Google authentication not available in this environment");
+  }
+
+  /**
+   * Import normalized events into the user's primary Google Calendar.
+   * Ensures interactive consent if needed. Calls progressCallback with a
+   * percentage (0-100) if provided.
+   * @async
+   * @param {Array<Object>} events
+   * @param {function(number):void|null} [progressCallback=null]
+   * @returns {Promise<{success:boolean,created:number,errors:Array}>}
+   */
+  async function importEvents(events, progressCallback = null) {
+    console.log("Google: importEvents start", { count: events.length });
+    // Ensure authenticated
+    let auth = await ensureAuth();
+    if (!auth.authenticated) {
+      console.log(
+        "Google: not authenticated; invoking chrome.identity interactive flow"
+      );
+      if (
+        typeof chrome !== "undefined" &&
+        chrome.identity &&
+        chrome.identity.getAuthToken
+      ) {
+        try {
+          const token = await new Promise((res, rej) =>
+            chrome.identity.getAuthToken({ interactive: true }, (t) => {
+              if (chrome.runtime.lastError)
+                return rej(chrome.runtime.lastError);
+              res(t);
+            })
+          );
+          auth = { authenticated: true, accessToken: token };
+        } catch (e) {
+          throw new Error("Authentication failed: " + (e.message || e));
+        }
+      } else {
+        throw new Error("Authentication not available in this environment");
+      }
+    }
+    const created = [];
+    const errors = [];
+    let idx = 0;
+    for (const ev of events) {
+      idx++;
+      try {
+        console.log(`Google: importing event ${idx}/${events.length}`, {
+          evShort: ev.CourseName + " " + ev.StartDate,
+        });
+        const payload = eventToGooglePayload(ev);
+        // Ensure or create the target calendar named 'Test'
+        const tokenToUse = auth?.accessToken ?? null;
+        const calendarId = await getOrCreateCalendar("Test", tokenToUse);
+        console.log("Google: apiRequest payload", payload);
+        const resp = await apiRequest(
+          `calendars/${encodeURIComponent(calendarId)}/events`,
+          "POST",
+          payload,
+          tokenToUse
+        );
+        console.log(`Google: event inserted ${idx}`, { id: resp.id });
+        created.push(ev);
+      } catch (e) {
+        // Log the full error object (status/body) so DevTools shows details
+        console.error("Google: event import error", {
+          idx,
+          status: e && e.status,
+          body: e && e.body,
+          error: e,
+        });
+        errors.push({ event: ev, error: e && (e.body || e.message) });
+      }
+      if (progressCallback) {
+        try {
+          progressCallback(Math.round((idx / events.length) * 100));
+        } catch (e) {
+          // ignore callback errors
+        }
+      }
+    }
+    console.log("Google: importEvents done", {
+      created: created.length,
+      errors: errors.length,
+    });
+    return { success: errors.length === 0, created: created.length, errors };
+  }
+
+  /**
+   * Normalize the page `result` object (or accept already-normalized
+   * events) and import them into a calendar. Returns the import summary.
+   * @async
+   * @param {Object|Array} rawResult - Page result object or normalized events
+   * @param {Array<string>|null} [selectedTermCodes=null]
+   * @param {function(number):void|null} [progressCallback=null]
+   * @returns {Promise<{success:boolean,created:number,errors:Array}>}
+   */
+  async function importFromPageResult(
+    rawResult,
+    selectedTermCodes = null,
+    progressCallback = null
+  ) {
+    let events;
+    if (typeof rawResult === "object") {
+      events = rawResult;
+    } else {
+      throw new Error(
+        "Cannot normalize provided rawResult; pass normalized events or ensure ics-generator is available"
+      );
+    }
+
+    if (!events || events.length === 0)
+      return { success: true, created: 0, errors: [] };
+
+    // Ensure authenticated (interactive if needed)
+    let auth = await ensureAuth();
+    if (!auth.authenticated) {
+      if (
+        typeof chrome !== "undefined" &&
+        chrome.identity &&
+        chrome.identity.getAuthToken
+      ) {
+        try {
+          const token = await new Promise((res, rej) =>
+            chrome.identity.getAuthToken({ interactive: true }, (t) => {
+              if (chrome.runtime.lastError)
+                return rej(chrome.runtime.lastError);
+              res(t);
+            })
+          );
+          auth = { authenticated: true, accessToken: token };
+        } catch (e) {
+          throw new Error("Authentication failed: " + (e.message || e));
+        }
+      } else {
+        throw new Error("Authentication not available in this environment");
+      }
+    }
+
+    // Ensure calendar exists (create or reuse 'Test')
+    const calendarId = await getOrCreateCalendar("Test", auth.accessToken);
+
+    // Insert events into created calendar
+    const created = [];
+    const errors = [];
+    for (let i = 0; i < events.length; i++) {
+      try {
+        const payload = eventToGooglePayload(events[i]);
+        console.log("Google: apiRequest payload", payload);
+        const tokenToUse = auth?.accessToken ?? null;
+        const resp = await apiRequest(
+          `calendars/${encodeURIComponent(calendarId)}/events`,
+          "POST",
+          payload,
+          tokenToUse
+        );
+        created.push(resp.id || null);
+        if (progressCallback)
+          progressCallback(Math.round(((i + 1) / events.length) * 100));
+      } catch (e) {
+        console.error("Google: event import error (page result)", {
+          i,
+          status: e && e.status,
+          body: e && e.body,
+          error: e,
+        });
+        errors.push({ event: events[i], error: e && (e.body || e.message) });
+      }
+    }
+    return { success: errors.length === 0, created: created.length, errors };
+  }
+
+  // Public API: exported functions (listed here for quick reference).
+  // Implementations are defined above. Attach them to self.google at the end
+  // so the module reads top-to-bottom with helpers first.
+  self.google = {
+    authenticate,
+    importEvents,
+    importFromPageResult,
+    getOrCreateCalendar,
+    ensureAuth,
+    clearCachedChromeToken,
+  };
+})();

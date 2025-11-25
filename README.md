@@ -1,146 +1,84 @@
-# Parser for Guelph University Student's PDF Schedule
+<h1> Guelph Schedule Exporter (Chrome Extension) </h1>
 
-This Bash script automates converting a University of Guelph student's schedule (downloaded as a PDF from WebAdvisor) into a `.ics` file for easy import into calendar applications such as Google, Apple, or Outlook Calendar. The script processes lectures, labs, and exams while handling recurring events to optimize performance.
+Export your University of Guelph Self-Service schedule to ICS or send it straight into Google/Outlook calendars.
 
-## Table of Contents
-- [Features](#features)
-- [Goals](#goals)
-- [Prerequisites](#prerequisites)
-  - [Required Tools](#required-tools)
+---
+
+<h2> Table of Contents </h2>
+
+- [Setup](#setup)
 - [Usage](#usage)
-  - [Steps to Run](#steps-to-run)
-- [Example Input and Output](#example-input-and-output)
-  - [Example Input (PDF Content)](#example-input-pdf-content)
-  - [Example Output (ICS File)](#example-output-ics-file)
-- [Performance](#performance)
-- [Future Enhancements](#future-enhancements)
+- [Key Features](#key-features)
+- [How It Works](#how-it-works)
+- [Provider Notes](#provider-notes)
+- [File Map](#file-map)
+- [Testing](#testing)
+- [Future Improvements](#future-improvements)
 
-## Features
+---
 
-1. **PDF Conversion**:
-   - Converts the WebAdvisor PDF schedule into a plain text file using `pdftotext`.
+## Setup
 
-2. **Recurring Event Support**:
-   - Generates optimized recurring events for lectures, labs, and exams using ICS `RRULE` format.
-
-3. **Calendar Integration**:
-   - Outputs a `.ics` file compatible with calendar applications like Google Calendar, Apple Calendar, and Outlook.
-
-4. **Fast Execution**:
-   - Efficient parsing and caching mechanisms ensure quick execution, even for complex schedules.
-
-## Goals
-
-1. **Automate Schedule Parsing**:
-   - Extract and organize course titles and event details from the PDF into structured data.
-
-2. **Generate `.ics` File**:
-   - Automate the creation of an iCalendar file for easy import into calendar applications.
-
-3. **Optimize Performance**:
-   - Handle recurring events to minimize file size and reduce execution time.
-
-## Prerequisites
-
-### Required Tools
-
-1. **`pdftotext`**:
-   - Converts PDF files to plain text for processing.
-   - Part of the `poppler-utils` package.
-
-   #### Installation Options:
-   **For Linux/macOS**:
-     ```bash
-     sudo apt install poppler-utils
-     ```
-
-   **For Windows (via Chocolatey)**:
-   - Install [Chocolatey](https://ultahost.com/knowledge-base/install-chocolatey-on-windows-10/) if it’s not already installed.
-   - Install `pdftotext` using Chocolatey:
-     ```powershell
-     choco install poppler
-     ```
-
-3. **Bash**:
-   - The script requires a Bash-compatible shell (e.g., Git Bash on Windows, or Bash on Linux/macOS).
+1. Install dev deps for tests (extension itself is bundle-free):
+   ```sh
+   npm install
+   ```
+2. In Chrome/Edge, open `chrome://extensions`, toggle **Developer mode**, then **Load unpacked** pointing to this repo root.
+3. (Optional) Open the extension **Options** page to override Google/Outlook OAuth client IDs stored in `chrome.storage.local`.
 
 ## Usage
 
-### Steps to Run
+1. Sign in to `https://colleague-ss.uoguelph.ca` and open your **PrintSchedule** page so the content script can see the embedded `result` object.
+2. Click the extension icon to open the popup. It will auto-detect available terms and list them as toggleable cards.
+3. Choose one or more actions:
+   - **Download ICS** - generates `schedule.ics` locally.
+   - **Google Calendar** - interactive `chrome.identity` OAuth, then job-based import via the Calendar REST API.
+   - **Outlook Calendar** - Microsoft identity + Graph Calendar import.
+4. Press **Run Selected**. Progress and per-provider results show inline; errors remain expandable for debugging.
+5. Need a walkthrough? Use the popup help link for a quick primer on term selection and provider flows.
 
-1. **Download the Schedule PDF from WebAdvisor**:
-   - Log in to **WebAdvisor** using your University of Guelph student account.
-   - Navigate to the **Student Planning** section.
-   - Select **Plan your Degree & Register for Classes**.
-   - Locate the **Print** button on the page (as shown below) and click it:
+## Key Features
 
-     ![Print Button](https://github.com/user-attachments/assets/416127fa-d3ed-4fd6-b94a-cf27b476ba6a)
+- **Zero-copy extraction** - content script injects `src/injected-page.js` to post the page's `result` object; falls back to inline-script parsing when needed.
+- **Term-aware normalization** - filters to registered/active sections, keeping multi-instructor listings and start/end dates consistent for recurrence rules.
+- **ICS generator** - weekly RRULEs with cutoff handling, deterministic UIDs, and local-time DTSTART/DTEND formatted for calendar imports.
+- **Direct imports** - Google and Outlook providers run inside the service worker with progress-tracked jobs and persistent status in `chrome.storage`.
+- **Inline troubleshooting** - popup renders per-provider result cards with copy-to-clipboard JSON for quick bug reports.
 
-   - A new tab will open with your schedule in a printable format. Follow these steps to save it as a PDF:
-     - Press **Ctrl + P** (or **Cmd + P** on Mac) to open the print dialog.
-     - Change the **Destination** to **Save as PDF**.
-     - Click **Save** to download the schedule:
+## How It Works
 
-       ![Save as PDF](https://github.com/user-attachments/assets/e0d6876f-b085-4f6d-8bb0-f4c538161292)
+1. **Page capture** - `src/content.js` checks schedule heuristics, injects a page script to read `window.result`, and answers `extractSchedule` messages from the popup.
+2. **Normalization** - `src/ics-generator.js`'s `generateEventsFromRawData` flattens term data into consistent event objects (dates, times, days, instructors, credits).
+3. **Outputs** - the same normalized events feed ICS download (`generateICSFromRawData`) and provider imports (Google/Outlook `importEvents`).
+4. **Background jobs** - `src/background.js` spawns long-running imports, persists progress to `chrome/storage/local`, and supports polling via `queryJob` from the popup UI.
+5. **UI flow** - `src/popup.js` wires term selection, option cards, and result rendering; `options.html/js` persist alternate OAuth client IDs for testing.
 
-2. **Run the Script**:
-   ```bash
-   ./script.sh
-   ```
+## Provider Notes
 
-3. **Provide the PDF Path**:
-   When prompted, enter the full path to your downloaded WebAdvisor schedule PDF.
+- **Google** (`src/google.js`) - uses `chrome.identity/getAuthToken`, validates scopes with `tokeninfo`, creates or reuses a dedicated calendar, and batches VEVENT payloads with recurrence when available.
+- **Outlook** (`src/outlook.js`) - mirrors the same normalized event shape, authenticates with Microsoft identity endpoints, and writes to the signed-in user's default calendar via Graph.
+- **Auth cleanup** - the options page exposes stored client IDs; `google.js` also includes helpers to clear cached tokens when debugging consent prompts.
 
-4. **View the Output**:
-   - The script will generate a `Schedule.ics` file in the current directory.
+## File Map
 
-## Example Input and Output
+| Component          | Path                  | Purpose                                             |
+| ------------------ | --------------------- | --------------------------------------------------- |
+| Content script     | `src/content.js`      | Detects schedule pages and extracts `result`.       |
+| Injected helper    | `src/injected-page.js` | Runs in page context to post schedule data.         |
+| Popup UI           | `src/popup.js`         | Term selection, action toggles, job polling/results.|
+| ICS + normalization| `src/ics-generator.js`| Builds normalized events and ICS text.              |
+| Background worker  | `src/background.js`   | Manages import jobs and storage.                    |
+| Google provider    | `src/google.js`       | Calendar REST auth + event creation.                |
+| Outlook provider   | `src/outlook.js`      | Microsoft Graph auth + event creation.              |
+| Options page       | `src/options.js`      | Persist alternate client IDs and show help.         |
 
-### Example Input (PDF Content)
+## Testing
 
-A typical schedule from WebAdvisor might look like this:
+- Run mocha suite: `npm test`
+- Fixtures under `tests/fixtures/` cover multi-instructor cases, ICS helpers, and OAuth flow mocks.
 
-```plaintext
-CIS*2520*0110: Data Structures
-LEC MWF 1:30 PM - 2:20 PM 9/5/2024 - 12/13/2024
-LAB T 3:30 PM - 5:20 PM 9/5/2024 - 12/13/2024
-EXAM F 2:30 PM - 4:30 PM 12/6/2024 - 12/6/2024
-```
+## Future Improvements
 
-### Example Output (ICS File)
-
-```ics
-BEGIN:VCALENDAR
-VERSION:2.0
-CALSCALE:GREGORIAN
-BEGIN:VEVENT
-UID:abcd1234
-DTSTAMP:20230901T123456Z
-DTSTART:20230905T133000
-DTEND:20230905T142000
-RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=20231213T235959Z
-SUMMARY:Lecture for CIS*2520*0110
-DESCRIPTION:Lecture session for CIS*2520*0110
-LOCATION:Mackinnon Building Room 101
-END:VEVENT
-END:VCALENDAR
-```
-
-## Performance
-
-### Execution Time
-- The script is optimized for performance and can process schedules in less than **2 seconds** for typical inputs.
-
-## Future Enhancements
-
-1. **Error Handling**:
-   - Improve validation for missing or malformed input files.
-
-2. **Additional Features**:
-   - Add support for holidays or exceptions in the schedule.
-  
-3. **Implement Outlook and Google Calendar APIs**
-   - Offer direct imports from the script into Outlook or Google Calendar using their respective APIs.
-
-4. **Improved User Interface** (**With Help from Matthew Jarzynowski**):
-   - Provide clearer prompts and progress messages for users.
+1. Auto-detect and display overlapping meetings before export/import.
+2. Allow selecting a target calendar name (rather than the hard-coded defaults) in the popup.
+3. Add a dry-run mode that only validates schedule parsing and shows a diff preview.

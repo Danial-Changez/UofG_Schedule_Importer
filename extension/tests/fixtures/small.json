@@ -1,0 +1,86 @@
+{
+  "Terms": [
+    {
+      "Code": "F25",
+      "Description": "Fall 2025 (small sample)",
+      "StartDate": "2025-09-04T00:00:00",
+      "EndDate": "2025-12-12T00:00:00",
+      "PlannedCourses": [
+        {
+          "Section": {
+            "CourseName": "CIS*2500",
+            "Number": "101",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Alice Example"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "LEC",
+                "StartTime": "9:00 AM",
+                "EndTime": "10:20 AM",
+                "DaysOfWeek": "MWF",
+                "MeetingLocation": "ENG 120",
+                "StartDateString": "9/8/2025",
+                "EndDateString": "12/12/2025",
+                "StartDate": "2025-09-08T00:00:00",
+                "EndDate": "2025-12-12T00:00:00"
+              },
+              {
+                "InstructionalMethod": "LAB",
+                "StartTime": "2:00 PM",
+                "EndTime": "4:00 PM",
+                "DaysOfWeek": "T",
+                "MeetingLocation": "ENG Lab 1",
+                "StartDateString": "9/9/2025",
+                "EndDateString": "12/12/2025",
+                "StartDate": "2025-09-09T00:00:00",
+                "EndDate": "2025-12-12T00:00:00"
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "MATH*1100",
+            "Number": "201",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Bob Example"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "TBD",
+                "StartTime": null,
+                "EndTime": null,
+                "DaysOfWeek": "",
+                "MeetingLocation": "",
+                "StartDateString": null,
+                "EndDateString": null,
+                "StartDate": null,
+                "EndDate": null
+              }
+            ]
+          }
+        },
+        {
+          "Section": {
+            "CourseName": "HIST*2100",
+            "Number": "001",
+            "MinimumCredits": 0.5,
+            "Faculty": ["Carol Example"],
+            "PlannedMeetings": [
+              {
+                "InstructionalMethod": "EXAM",
+                "StartTime": "1:00 PM",
+                "EndTime": "4:00 PM",
+                "DaysOfWeek": "",
+                "MeetingLocation": "EXAM HALL",
+                "StartDateString": "12/15/2025",
+                "EndDateString": "12/15/2025",
+                "StartDate": "2025-12-15T00:00:00",
+                "EndDate": "2025-12-15T00:00:00"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

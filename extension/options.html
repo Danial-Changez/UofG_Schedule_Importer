@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Schedule Exporter Options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="root">
+      <div class="settings-view">
+        <h2>Schedule Exporter Settings</h2>
+        <div class="field">
+          <label for="google_client_id">Google Client ID</label>
+          <input
+            id="google_client_id"
+            placeholder="Enter Google OAuth client ID"
+          />
+        </div>
+        <div class="field">
+          <label for="outlook_client_id">Outlook Client ID</label>
+          <input
+            id="outlook_client_id"
+            placeholder="Enter Outlook OAuth client ID"
+          />
+        </div>
+        <div class="actions">
+          <button id="save">Save</button>
+          <button id="load">Load</button>
+          <button id="help">Help</button>
+        </div>
+        <div id="status" class="status"></div>
+      </div>
+
+      <div id="helpView" class="help-view" aria-hidden="true">
+        <h2>How to use Schedule Exporter</h2>
+        <p>
+          This extension extracts your course schedule from the university
+          timetable page and exports it to calendar services (Google/Outlook).
+        </p>
+        <ol>
+          <li>Open your timetable page and run the extension's popup.</li>
+          <li>Select the term(s) and choose 'Export' or 'Import'.</li>
+          <li>
+            For Google imports the extension will request consent via
+            Chrome's account picker.
+          </li>
+          <li>
+            Use the Save button on this page to persist OAuth client IDs
+            (optional; usually not required when using chrome.identity).
+          </li>
+        </ol>
+        <p>
+          If you need more help, see the README or contact the developer.
+        </p>
+        <div class="actions">
+          <button id="backFromHelp">Back</button>
+        </div>
+      </div>
+    </div>
+    <script src="src/options.js"></script>
+  </body>
+</html>
