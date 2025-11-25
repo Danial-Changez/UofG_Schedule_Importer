@@ -1,6 +1,8 @@
 <h1> Guelph Schedule Exporter (Chrome Extension) </h1>
 
-Export your University of Guelph Self-Service schedule to ICS or send it straight into Google/Outlook calendars.
+![Extension icon](extension/icons/logo.png)
+
+Export your University of Guelph WebAdvisor schedule to ICS or send it straight into Google calendars (outlook import coming soon).
 
 ---
 
@@ -9,7 +11,6 @@ Export your University of Guelph Self-Service schedule to ICS or send it straigh
 - [Setup](#setup)
 - [Usage](#usage)
 - [Key Features](#key-features)
-- [How It Works](#how-it-works)
 - [Provider Notes](#provider-notes)
 - [File Map](#file-map)
 - [Testing](#testing)
@@ -19,45 +20,37 @@ Export your University of Guelph Self-Service schedule to ICS or send it straigh
 
 ## Setup
 
-1. Install dev deps for tests (extension itself is bundle-free):
+1. Install dependencies for developer testing, otherwise skip to step 2 for usage:
    ```sh
    npm install
    ```
-2. In Chrome/Edge, open `chrome://extensions`, toggle **Developer mode**, then **Load unpacked** pointing to this repo root.
+2. In Chrome/Edge, open `chrome://extensions`, toggle **Developer mode**, then **Load unpacked** pointing to this extension folder root.
 3. (Optional) Open the extension **Options** page to override Google/Outlook OAuth client IDs stored in `chrome.storage.local`.
 
 ## Usage
 
-1. Sign in to `https://colleague-ss.uoguelph.ca` and open your **PrintSchedule** page so the content script can see the embedded `result` object.
-2. Click the extension icon to open the popup. It will auto-detect available terms and list them as toggleable cards.
+1. Sign in to WebAdvisor and navigate "Plan your Schedule > Print", open your **PrintSchedule** page so the content script can see the embedded `result` object.
+2. Click the extension icon to open the popup. It will auto-detect available terms and list them as toggleable cards. Reload the page if no terms show up.
 3. Choose one or more actions:
-   - **Download ICS** - generates `schedule.ics` locally.
-   - **Google Calendar** - interactive `chrome.identity` OAuth, then job-based import via the Calendar REST API.
+   - **Download ICS** - Generates `schedule.ics` locally.
+   - **Google Calendar** - Interactive `chrome.identity` OAuth, then job-based import via the Calendar REST API.
    - **Outlook Calendar** - Microsoft identity + Graph Calendar import.
 4. Press **Run Selected**. Progress and per-provider results show inline; errors remain expandable for debugging.
-5. Need a walkthrough? Use the popup help link for a quick primer on term selection and provider flows.
+5. Need a walkthrough? Use the popup help link for a quick tutorial on term selection and provider flows.
 
 ## Key Features
 
-- **Zero-copy extraction** - content script injects `src/injected-page.js` to post the page's `result` object; falls back to inline-script parsing when needed.
-- **Term-aware normalization** - filters to registered/active sections, keeping multi-instructor listings and start/end dates consistent for recurrence rules.
-- **ICS generator** - weekly RRULEs with cutoff handling, deterministic UIDs, and local-time DTSTART/DTEND formatted for calendar imports.
-- **Direct imports** - Google and Outlook providers run inside the service worker with progress-tracked jobs and persistent status in `chrome.storage`.
-- **Inline troubleshooting** - popup renders per-provider result cards with copy-to-clipboard JSON for quick bug reports.
-
-## How It Works
-
-1. **Page capture** - `src/content.js` checks schedule heuristics, injects a page script to read `window.result`, and answers `extractSchedule` messages from the popup.
-2. **Normalization** - `src/ics-generator.js`'s `generateEventsFromRawData` flattens term data into consistent event objects (dates, times, days, instructors, credits).
-3. **Outputs** - the same normalized events feed ICS download (`generateICSFromRawData`) and provider imports (Google/Outlook `importEvents`).
-4. **Background jobs** - `src/background.js` spawns long-running imports, persists progress to `chrome/storage/local`, and supports polling via `queryJob` from the popup UI.
-5. **UI flow** - `src/popup.js` wires term selection, option cards, and result rendering; `options.html/js` persist alternate OAuth client IDs for testing.
+- **Extraction** - Content script injects `src/injected-page.js` to post the page's `result` object, and falls back to inline-script parsing when needed.
+- **Normalization** - Filters to registered/active sections, keeping multi-instructor listings and start/end dates consistent for recurrence rules.
+- **ICS Generator** - Weekly RRULEs with cutoff handling, deterministic UIDs, and local-time DTSTART/DTEND formatted for calendar imports.
+- **Direct Imports** - Google provider runs inside the service worker with progress-tracked jobs and persistent status in `chrome.storage`.
+- **Inline Troubleshooting** - Popup renders provider result cards with JSON for bug reports.
 
 ## Provider Notes
 
-- **Google** (`src/google.js`) - uses `chrome.identity/getAuthToken`, validates scopes with `tokeninfo`, creates or reuses a dedicated calendar, and batches VEVENT payloads with recurrence when available.
-- **Outlook** (`src/outlook.js`) - mirrors the same normalized event shape, authenticates with Microsoft identity endpoints, and writes to the signed-in user's default calendar via Graph.
-- **Auth cleanup** - the options page exposes stored client IDs; `google.js` also includes helpers to clear cached tokens when debugging consent prompts.
+- **Google** (`src/google.js`) - Uses `chrome.identity/getAuthToken`, validates scopes with `tokeninfo`, creates or reuses a dedicated calendar, and batches VEVENT payloads with recurrence when available.
+- **Outlook** (`src/outlook.js`) - Mirrors the same normalized event shape, authenticates with Microsoft identity endpoints, and writes to the signed-in user's default calendar via Graph. Need to update endpoint to complete access.
+- **Auth cleanup** - The options page exposes stored client IDs, while `google.js` also includes helpers to clear cached tokens when debugging consent prompts.
 
 ## File Map
 
@@ -81,4 +74,4 @@ Export your University of Guelph Self-Service schedule to ICS or send it straigh
 
 1. Auto-detect and display overlapping meetings before export/import.
 2. Allow selecting a target calendar name (rather than the hard-coded defaults) in the popup.
-3. Add a dry-run mode that only validates schedule parsing and shows a diff preview.
+3. Adjust Outlook Calendar API endpoint.
