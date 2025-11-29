@@ -30,13 +30,13 @@ Export your University of Guelph WebAdvisor schedule to ICS or send it straight 
 ## Usage
 
 1. Sign in to WebAdvisor and navigate "Plan your Schedule > Print", open your **PrintSchedule** page so the content script can see the embedded `result` object.
-2. Click the extension icon to open the popup. It will auto-detect available terms and list them as toggleable cards. Reload the page if no terms show up.
+2. Click the extension icon to open the pop-up. It will auto-detect available terms and list them as toggleable cards. Reload the page if no terms show up.
 3. Choose one or more actions:
    - **Download ICS** - Generates `schedule.ics` locally.
    - **Google Calendar** - Interactive `chrome.identity` OAuth, then job-based import via the Calendar REST API.
    - **Outlook Calendar** - Microsoft identity + Graph Calendar import.
-4. Press **Run Selected**. Progress and per-provider results show inline; errors remain expandable for debugging.
-5. Need a walkthrough? Use the popup help link for a quick tutorial on term selection and provider flows.
+4. Press **Run Selected**. Progress and per-provider results/errors show inline for debugging.
+5. Need a walkthrough? Use the pop-up help link for a quick tutorial on term selection and provider flows.
 
 ## Key Features
 
@@ -49,7 +49,7 @@ Export your University of Guelph WebAdvisor schedule to ICS or send it straight 
 ## Provider Notes
 
 - **Google** (`src/google.js`) - Uses `chrome.identity/getAuthToken`, validates scopes with `tokeninfo`, creates or reuses a dedicated calendar, and batches VEVENT payloads with recurrence when available.
-- **Outlook** (`src/outlook.js`) - Mirrors the same normalized event shape, authenticates with Microsoft identity endpoints, and writes to the signed-in user's default calendar via Graph. Need to update endpoint to complete access.
+- **Outlook** (`src/outlook.js`) - Mirrors the same normalized event shape, authenticates with Microsoft identity endpoints, and writes to the signed-in user's default calendar via Graph. Need to update the endpoint to complete access.
 - **Auth cleanup** - The options page exposes stored client IDs, while `google.js` also includes helpers to clear cached tokens when debugging consent prompts.
 
 ## File Map
@@ -73,5 +73,5 @@ Export your University of Guelph WebAdvisor schedule to ICS or send it straight 
 ## Future Improvements
 
 1. Auto-detect and display overlapping meetings before export/import.
-2. Allow selecting a target calendar name (rather than the hard-coded defaults) in the popup.
+2. Allow selecting a target calendar name (rather than the hard-coded defaults) in the pop-up.
 3. Adjust Outlook Calendar API endpoint.
