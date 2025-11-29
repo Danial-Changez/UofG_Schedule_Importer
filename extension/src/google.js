@@ -366,9 +366,9 @@
           evShort: ev.CourseName + " " + ev.StartDate,
         });
         const payload = eventToGooglePayload(ev);
-        // Ensure or create the target calendar named 'Test'
+        // Ensure or create the target calendar named 'UofG Schedule'
         const tokenToUse = auth?.accessToken ?? null;
-        const calendarId = await getOrCreateCalendar("Test", tokenToUse);
+        const calendarId = await getOrCreateCalendar("UofG Schedule", tokenToUse);
         console.log("Google: apiRequest payload", payload);
         const resp = await apiRequest(
           `calendars/${encodeURIComponent(calendarId)}/events`,
@@ -454,8 +454,8 @@
       }
     }
 
-    // Ensure calendar exists (create or reuse 'Test')
-    const calendarId = await getOrCreateCalendar("Test", auth.accessToken);
+    // Ensure calendar exists (create or reuse 'UofG Schedule')
+    const calendarId = await getOrCreateCalendar("UofG Schedule", auth.accessToken);
 
     // Insert events into created calendar
     const created = [];
