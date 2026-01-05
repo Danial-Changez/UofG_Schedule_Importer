@@ -52,7 +52,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           provider,
           status: "running",
           progress: 0,
-          created: Date.now(),
+          createdAt: Date.now(),
+          createdCount: 0,
         };
         await saveJob(job);
         // run import asynchronously (don't await) and update job
@@ -135,7 +136,7 @@ async function updateProgress(jobId, progress, created) {
   const job = (await loadJob(jobId)) || jobs[jobId] || { id: jobId };
   job.progress = progress;
   if (typeof created === "number") {
-    job.created = created;
+    job.createdCount = created;
   }
   await saveJob(job);
 }

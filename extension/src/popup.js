@@ -324,14 +324,8 @@ function pollImportJob(jobId, provider, totalEvents) {
       setStatus("No response from background when polling job");
       return;
     }
-    if (resp.status === "running") {
-      const progress = resp.progress || 0;
-      const created = resp.created || 0;
-      updateProgress(progress, created, totalEvents, provider);
-      setTimeout(check, 500);
-      return;
-    }
     if (resp.status === "done") {
+      // Check for done status first (before running) to avoid race condition
       const result = resp.result || { created: 0, errors: [] };
       const errCount = (result.errors || []).length;
       setProgressComplete(true, `Successfully created ${result.created} events${errCount > 0 ? ` (${errCount} errors)` : ""}`);
@@ -339,12 +333,20 @@ function pollImportJob(jobId, provider, totalEvents) {
       renderProviderResult(provider, result);
       return;
     }
+    if (resp.status === "running") {
+      const progress = resp.progress || 0;
+      const created = resp.createdCount || 0;
+      updateProgress(progress, created, totalEvents, provider);
+      setTimeout(check, 500);
+      return;
+    }
     if (resp.status === "failed") {
       setProgressComplete(false, resp.error || "Import failed");
       setStatus(`Import failed: ${resp.error || "unknown"}`);
       return;
     }
-    setProgressComplete(false, "Unknown job state");
+    // Unknown status - keep polling in case it's transitioning
+    setTimeout(check, 500);
   };
   check();
 }
