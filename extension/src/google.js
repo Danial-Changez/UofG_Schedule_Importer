@@ -220,12 +220,43 @@
       return local;
     }
 
+    // Parse the start date and calculate duration
+    const [sm, sd, sy] = ev.StartDate.split("/").map((s) => parseInt(s, 10));
+    let startDt = new Date(`${sy}-${String(sm).padStart(2, "0")}-${String(sd).padStart(2, "0")} ${ev.StartTime}`);
+    let endDt = new Date(`${sy}-${String(sm).padStart(2, "0")}-${String(sd).padStart(2, "0")} ${ev.EndTime}`);
+    const durationMs = endDt.getTime() - startDt.getTime();
+
+    // If event has recurring days, advance startDt to first matching weekday
+    let targetDays = [];
+    if (ev.DaysOfWeek) {
+      const tokenRegex = /Th|M|T|W|F/g;
+      const tokenToDay = { M: 1, T: 2, W: 3, Th: 4, F: 5 }; // JS weekday numbers
+      const tokens = (ev.DaysOfWeek.match(tokenRegex) || []).map((t) => t.trim());
+      targetDays = tokens.map((t) => tokenToDay[t]).filter((n) => n != null);
+      
+      if (targetDays.length > 0) {
+        // Advance startDt up to 7 days to match one of targetDays
+        let attempts = 0;
+        while (!targetDays.includes(startDt.getDay()) && attempts < 7) {
+          startDt = new Date(startDt.getTime() + 24 * 3600 * 1000);
+          attempts++;
+        }
+        // Recalculate endDt to maintain the same duration
+        endDt = new Date(startDt.getTime() + durationMs);
+      }
+    }
+
+    // Format adjusted dates
+    const formatDt = (dt) => {
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}T${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}:${String(dt.getSeconds()).padStart(2, "0")}`;
+    };
+
     const start = {
-      dateTime: formatLocalDateTime(ev.StartDate, ev.StartTime),
+      dateTime: formatDt(startDt),
       timeZone: "America/Toronto",
     };
     const end = {
-      dateTime: formatLocalDateTime(ev.StartDate, ev.EndTime),
+      dateTime: formatDt(endDt),
       timeZone: "America/Toronto",
     };
 
@@ -252,13 +283,86 @@
         )}T${String(until.getUTCHours()).padStart(2, "0")}${String(
           until.getUTCMinutes()
         ).padStart(2, "0")}${String(until.getUTCSeconds()).padStart(2, "0")}Z`;
+        
         resource.recurrence = [
           `RRULE:FREQ=WEEKLY;BYDAY=${days.join(",")};UNTIL=${untilStr}`,
         ];
+        
+        // Add EXDATE entries for reading weeks (UofG breaks)
+        const breakDates = getBreakDatesForEvent(startDt, until, targetDays);
+        for (const breakDate of breakDates) {
+          // Set the EXDATE to the same time as the event start
+          const exDate = new Date(breakDate);
+          exDate.setHours(startDt.getHours(), startDt.getMinutes(), 0, 0);
+          const exDateStr = `${exDate.getFullYear()}${String(exDate.getMonth() + 1).padStart(2, "0")}${String(exDate.getDate()).padStart(2, "0")}T${String(exDate.getHours()).padStart(2, "0")}${String(exDate.getMinutes()).padStart(2, "0")}${String(exDate.getSeconds()).padStart(2, "0")}`;
+          resource.recurrence.push(`EXDATE;TZID=America/Toronto:${exDateStr}`);
+        }
       }
     }
 
     return resource;
+  }
+  
+  /**
+   * Get the Nth occurrence of a specific weekday in a given month.
+   */
+  function getNthWeekdayOfMonth(year, month, weekday, n) {
+    const firstDay = new Date(year, month, 1);
+    const firstWeekday = firstDay.getDay();
+    let dayOffset = weekday - firstWeekday;
+    if (dayOffset < 0) dayOffset += 7;
+    const date = 1 + dayOffset + (n - 1) * 7;
+    return new Date(year, month, date);
+  }
+
+  /**
+   * Calculate University of Guelph reading week dates for a given academic year.
+   * - Fall Study Break: Saturday before Thanksgiving through Tuesday after (Sat-Tue)
+   * - Winter Reading Week: Week containing Family Day (3rd Monday of February) - Mon-Fri
+   */
+  function getReadingWeeks(fallYear) {
+    const breaks = [];
+    
+    // Fall Study Break: 2nd Monday of October is Thanksgiving
+    const thanksgiving = getNthWeekdayOfMonth(fallYear, 9, 1, 2);
+    const fallBreakStart = new Date(thanksgiving.getFullYear(), thanksgiving.getMonth(), thanksgiving.getDate() - 2);
+    const fallBreakEnd = new Date(thanksgiving.getFullYear(), thanksgiving.getMonth(), thanksgiving.getDate() + 1);
+    breaks.push({ start: fallBreakStart, end: fallBreakEnd });
+    
+    // Winter Reading Week: 3rd Monday of February is Family Day
+    const winterYear = fallYear + 1;
+    const familyDay = getNthWeekdayOfMonth(winterYear, 1, 1, 3);
+    breaks.push({
+      start: new Date(familyDay.getFullYear(), familyDay.getMonth(), familyDay.getDate()),
+      end: new Date(familyDay.getFullYear(), familyDay.getMonth(), familyDay.getDate() + 4)
+    });
+    
+    return breaks;
+  }
+
+  /**
+   * Get all break dates that fall on specified weekdays between event start and end.
+   */
+  function getBreakDatesForEvent(eventStart, eventEnd, targetDays) {
+    const excludeDates = [];
+    
+    // Determine academic year from event start
+    const startMonth = eventStart.getMonth();
+    const fallYear = startMonth >= 7 ? eventStart.getFullYear() : eventStart.getFullYear() - 1;
+    
+    const breaks = [...getReadingWeeks(fallYear), ...getReadingWeeks(fallYear + 1)];
+    
+    for (const breakPeriod of breaks) {
+      const current = new Date(breakPeriod.start);
+      while (current <= breakPeriod.end) {
+        if (current >= eventStart && current <= eventEnd && targetDays.includes(current.getDay())) {
+          excludeDates.push(new Date(current));
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    
+    return excludeDates;
   }
 
   /**
