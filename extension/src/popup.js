@@ -158,10 +158,95 @@ function syncOptionCards() {
     const input = document.getElementById(id);
     if (!input) return;
     const card = input.closest(".option-card");
-    const update = () => card?.classList.toggle("checked", input.checked);
+    const update = () => {
+      card?.classList.toggle("checked", input.checked);
+      saveExportOptions(); // Save when changed
+    };
     input.addEventListener("change", update);
     update();
   });
+}
+
+/**
+ * Save the current export options to storage.
+ */
+function saveExportOptions() {
+  const options = {
+    ics: document.getElementById("chk-ics")?.checked ?? false,
+    google: document.getElementById("chk-google")?.checked ?? false,
+    outlook: document.getElementById("chk-outlook")?.checked ?? false,
+  };
+  storage.set({ exportOptions: options });
+}
+
+/**
+ * Restore export options from storage.
+ * On first run (no saved options), defaults to ICS checked.
+ */
+async function restoreExportOptions() {
+  try {
+    const { exportOptions } = await storage.get(["exportOptions"]);
+    const icsChk = document.getElementById("chk-ics");
+    const googleChk = document.getElementById("chk-google");
+    const outlookChk = document.getElementById("chk-outlook");
+    
+    if (exportOptions) {
+      // Restore saved options
+      if (icsChk) {
+        icsChk.checked = exportOptions.ics ?? false;
+        icsChk.closest(".option-card")?.classList.toggle("checked", icsChk.checked);
+      }
+      if (googleChk) {
+        googleChk.checked = exportOptions.google ?? false;
+        googleChk.closest(".option-card")?.classList.toggle("checked", googleChk.checked);
+      }
+      if (outlookChk) {
+        outlookChk.checked = exportOptions.outlook ?? false;
+        outlookChk.closest(".option-card")?.classList.toggle("checked", outlookChk.checked);
+      }
+    } else {
+      // First run - default to ICS checked
+      if (icsChk) {
+        icsChk.checked = true;
+        icsChk.closest(".option-card")?.classList.add("checked");
+      }
+    }
+  } catch (e) {
+    // On error, default to ICS checked
+    const icsChk = document.getElementById("chk-ics");
+    if (icsChk) {
+      icsChk.checked = true;
+      icsChk.closest(".option-card")?.classList.add("checked");
+    }
+  }
+}
+
+/**
+ * Save selected term codes to storage.
+ */
+function saveSelectedTerms() {
+  const selectedTerms = getSelectedTermCodes();
+  storage.set({ selectedTerms });
+}
+
+/**
+ * Restore selected terms from storage after terms are loaded.
+ */
+async function restoreSelectedTerms() {
+  try {
+    const { selectedTerms } = await storage.get(["selectedTerms"]);
+    if (selectedTerms && Array.isArray(selectedTerms)) {
+      selectedTerms.forEach((code) => {
+        const input = document.getElementById(`term-${code}`);
+        if (input) {
+          input.checked = true;
+          input.closest(".option-card")?.classList.add("checked");
+        }
+      });
+    }
+  } catch (e) {
+    // Ignore storage failures
+  }
 }
 
 function downloadICS(icsContent) {
@@ -307,8 +392,12 @@ async function loadTerms() {
       const inp = wrapper.querySelector("input");
       inp.addEventListener("change", () => {
         wrapper.classList.toggle("checked", inp.checked);
+        saveSelectedTerms(); // Save when changed
       });
     });
+
+    // Restore previously selected terms
+    await restoreSelectedTerms();
 
     if (terms.length === 0) {
       setStatus("No terms found on this page.");
@@ -363,6 +452,7 @@ function wireHelpLinks() {
 }
 
 async function init() {
+  await restoreExportOptions(); // Restore saved options first
   syncOptionCards();
   wireHelpLinks();
   dom.runBtn.addEventListener("click", handleRunClick);
