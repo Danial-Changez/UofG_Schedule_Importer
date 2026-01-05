@@ -71,18 +71,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             } else {
               throw new Error("Unsupported provider");
             }
+            // Get the latest job state before marking as done
+            const currentJob = (await loadJob(jobId)) || job;
             const doneJob = {
-              ...job,
+              ...currentJob,
               status: "done",
               progress: 100,
               finished: Date.now(),
               result: res,
             };
             await saveJob(doneJob);
-            console.log("background: job done", jobId, doneJob);
+            console.log("background: job done", jobId, doneJob.status);
           } catch (err) {
+            const currentJob = (await loadJob(jobId)) || job;
             const failed = {
-              ...job,
+              ...currentJob,
               status: "failed",
               error: err.message || String(err),
             };

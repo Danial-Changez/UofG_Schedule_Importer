@@ -56,18 +56,31 @@ function showProgress(show, provider = "") {
     return;
   }
   console.log("showProgress called:", show, provider);
-  dom.progressContainer.style.display = show ? "block" : "none";
+  dom.progressContainer.style.display = show ? "flex" : "none";
   dom.progressContainer.className = "progress-container";
-  // Hide/show status text when progress bar is visible
+  
+  // Hide/show main content when progress bar is visible
+  if (dom.controls) {
+    dom.controls.style.display = show ? "none" : "flex";
+  }
   if (dom.status) {
     dom.status.style.display = show ? "none" : "block";
   }
+  const resultsRoot = document.getElementById("results-root");
+  if (resultsRoot) {
+    resultsRoot.style.display = show ? "none" : "block";
+  }
+  const footer = document.querySelector(".footer");
+  if (footer) {
+    footer.style.display = show ? "none" : "flex";
+  }
+  
   if (show) {
     const providerName = provider === "google" ? "Google Calendar" : provider === "outlook" ? "Outlook Calendar" : "calendar";
     dom.progressLabel.innerText = `Importing to ${providerName}...`;
     dom.progressPercent.innerText = "0%";
     dom.progressBar.style.width = "0%";
-    dom.progressDetail.innerText = "";
+    dom.progressDetail.innerText = "Preparing...";
   }
 }
 
@@ -89,16 +102,18 @@ function setProgressComplete(success, message) {
   dom.progressPercent.innerText = success ? "Done!" : "Error";
   dom.progressDetail.innerText = message;
   
-  // Auto-hide after a delay on success and restore status visibility
-  if (success) {
-    setTimeout(() => {
-      dom.progressContainer.style.display = "none";
-      if (dom.status) dom.status.style.display = "block";
-    }, 3000);
-  } else {
-    // On error, restore status visibility immediately
+  // Auto-hide after a delay and restore main UI
+  setTimeout(() => {
+    dom.progressContainer.style.display = "none";
+    dom.progressContainer.className = "progress-container"; // Reset classes
+    // Restore main content
+    if (dom.controls) dom.controls.style.display = "flex";
     if (dom.status) dom.status.style.display = "block";
-  }
+    const resultsRoot = document.getElementById("results-root");
+    if (resultsRoot) resultsRoot.style.display = "block";
+    const footer = document.querySelector(".footer");
+    if (footer) footer.style.display = "flex";
+  }, success ? 2000 : 4000); // Show longer on error
 }
 
 function toggleHelp(show) {
@@ -319,6 +334,7 @@ function pollImportJob(jobId, provider, totalEvents) {
     const resp = await new Promise((resolve) =>
       chrome.runtime.sendMessage({ action: "queryJob", jobId }, resolve)
     );
+    console.log("pollImportJob response:", resp);
     if (!resp) {
       setProgressComplete(false, "No response from background");
       setStatus("No response from background when polling job");
@@ -326,6 +342,7 @@ function pollImportJob(jobId, provider, totalEvents) {
     }
     if (resp.status === "done") {
       // Check for done status first (before running) to avoid race condition
+      console.log("Job done, calling setProgressComplete");
       const result = resp.result || { created: 0, errors: [] };
       const errCount = (result.errors || []).length;
       setProgressComplete(true, `Successfully created ${result.created} events${errCount > 0 ? ` (${errCount} errors)` : ""}`);
@@ -346,6 +363,7 @@ function pollImportJob(jobId, provider, totalEvents) {
       return;
     }
     // Unknown status - keep polling in case it's transitioning
+    console.log("Unknown status, continuing to poll:", resp.status);
     setTimeout(check, 500);
   };
   check();
