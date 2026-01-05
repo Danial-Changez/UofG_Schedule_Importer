@@ -112,13 +112,29 @@ function getReadingWeeks(fallYear) {
 }
 
 /**
+ * Get exam period dates (last 2 weeks of the term) for exclusion.
+ * The EndDate from WebAdvisor includes the exam period, so we need to exclude it.
+ * @param {Date} termEndDate - The end date of the term (including exams)
+ * @returns {{start: Date, end: Date}} The exam period to exclude
+ */
+function getExamPeriod(termEndDate) {
+  // Exam period is the last 2 weeks (14 days) before the term end date
+  const examEnd = new Date(termEndDate);
+  const examStart = new Date(termEndDate);
+  examStart.setDate(examStart.getDate() - 13); // 14 days total including end date
+  return { start: examStart, end: examEnd };
+}
+
+/**
  * Get all break dates that fall on specified weekdays between event start and end.
+ * Includes reading weeks and exam periods.
  * @param {Date} eventStart - Event start date
  * @param {Date} eventEnd - Event end date (UNTIL)
  * @param {Array<number>} targetDays - JS weekday numbers (0=Sun, 1=Mon, etc.)
+ * @param {boolean} [includeExamPeriod=true] - Whether to include exam period in exclusions
  * @returns {Array<Date>} Dates to exclude
  */
-function getBreakDatesForEvent(eventStart, eventEnd, targetDays) {
+function getBreakDatesForEvent(eventStart, eventEnd, targetDays, includeExamPeriod = true) {
   const excludeDates = [];
   
   // Determine academic year from event start
@@ -129,6 +145,12 @@ function getBreakDatesForEvent(eventStart, eventEnd, targetDays) {
   
   // Get reading weeks for this academic year and potentially the next
   const breaks = [...getReadingWeeks(fallYear), ...getReadingWeeks(fallYear + 1)];
+  
+  // Add exam period (last 2 weeks of the term) to breaks if requested
+  if (includeExamPeriod) {
+    const examPeriod = getExamPeriod(eventEnd);
+    breaks.push(examPeriod);
+  }
   
   for (const breakPeriod of breaks) {
     // Iterate through each day of the break
@@ -147,31 +169,8 @@ function getBreakDatesForEvent(eventStart, eventEnd, targetDays) {
 }
 
 function buildCalendarLines(events) {
-  // Build calendar lines and recurrence UNTIL cutoffs for non-exam items.
-  // Use numeric timestamps for faster comparisons and cache parsed end dates.
-  const cutoffMap = new Map(); // key -> timestamp (ms)
-  for (let i = 0; i < events.length; i++) {
-    const ev = events[i];
-    if (ev.InstructionalMethod === "EXAM") continue;
-    const cname = ev.CourseName;
-    const snum = ev.SectionNumber;
-    if (!cname || !snum) continue;
-    const key = `${cname}||${snum}`;
-    const endDate = ev.EndDate; // expected mm/dd/YYYY
-    if (!endDate) continue;
-    const parts = endDate.split("/").map((s) => parseInt(s, 10));
-    if (parts.length !== 3) continue;
-    const endTs = new Date(parts[2], parts[0] - 1, parts[1]).getTime();
-    const existing = cutoffMap.get(key);
-    if (!existing || endTs > existing) cutoffMap.set(key, endTs);
-  }
-
-  // subtract 14 days (in ms) and set time to 23:59:59
-  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
-  for (const [k, ts] of cutoffMap.entries()) {
-    const nTs = ts - TWO_WEEKS_MS + (23 * 3600 + 59 * 60 + 59) * 1000;
-    cutoffMap.set(k, nTs);
-  }
+  // Build calendar lines. Exam weeks are now excluded via EXDATE entries
+  // rather than modifying the UNTIL date, for more accurate handling.
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -200,23 +199,19 @@ function buildCalendarLines(events) {
   const days = tokens.map((t) => tokenToBy[t]).filter(Boolean);
   const byday = days.join(",");
 
-    const key = ev.CourseName && ev.SectionNumber ? `${ev.CourseName}||${ev.SectionNumber}` : null;
+    // Calculate UNTIL date from EndDate
     let untilDtTs;
-  if (ev.InstructionalMethod !== "EXAM" && key && cutoffMap.has(key)) {
-      untilDtTs = cutoffMap.get(key);
-    } else {
-      const ed = ev.EndDate;
-      if (ed) {
-        const p = ed.split("/").map((s) => parseInt(s, 10));
-        if (p.length === 3) {
-          untilDtTs =
-            new Date(p[2], p[0] - 1, p[1]).getTime() +
-            (23 * 3600 + 59 * 60 + 59) * 1000;
-      // recompute endDt based on original duration to keep same length
-      endDt = new Date(startDt.getTime() + durationMs);
-        } else untilDtTs = startDt.getTime();
+    const ed = ev.EndDate;
+    if (ed) {
+      const p = ed.split("/").map((s) => parseInt(s, 10));
+      if (p.length === 3) {
+        untilDtTs =
+          new Date(p[2], p[0] - 1, p[1]).getTime() +
+          (23 * 3600 + 59 * 60 + 59) * 1000;
+        // recompute endDt based on original duration to keep same length
+        endDt = new Date(startDt.getTime() + durationMs);
       } else untilDtTs = startDt.getTime();
-    }
+    } else untilDtTs = startDt.getTime();
 
     const untilDt = new Date(untilDtTs);
 
@@ -255,10 +250,12 @@ function buildCalendarLines(events) {
         `RRULE:FREQ=WEEKLY;BYDAY=${byday};UNTIL=${formatICSDatetime(untilDt)}`
       );
       
-      // Add EXDATE entries for reading weeks
+      // Add EXDATE entries for reading weeks and exam period (for non-EXAM events)
       const bydayMap = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
       const eventTargetDays = byday.split(",").map((d) => bydayMap[d]).filter((n) => n != null);
-      const breakDates = getBreakDatesForEvent(startDt, untilDt, eventTargetDays);
+      // Include exam period exclusions only for regular classes, not for EXAM events
+      const includeExamPeriod = ev.InstructionalMethod !== "EXAM";
+      const breakDates = getBreakDatesForEvent(startDt, untilDt, eventTargetDays, includeExamPeriod);
       
       for (const breakDate of breakDates) {
         // Set the EXDATE to the same time as the event start

@@ -288,8 +288,12 @@
           `RRULE:FREQ=WEEKLY;BYDAY=${days.join(",")};UNTIL=${untilStr}`,
         ];
         
-        // Add EXDATE entries for reading weeks (UofG breaks)
-        const breakDates = getBreakDatesForEvent(startDt, until, targetDays);
+        // Add EXDATE entries for reading weeks and exam period (UofG breaks)
+        // Only exclude exam period for regular classes, not for EXAM events
+        const isExamEvent = ev.InstructionalMethod === "EXAM";
+        const breakDates = isExamEvent 
+          ? getBreakDatesForEventWithoutExams(startDt, until, targetDays)
+          : getBreakDatesForEvent(startDt, until, targetDays);
         for (const breakDate of breakDates) {
           // Set the EXDATE to the same time as the event start
           const exDate = new Date(breakDate);
@@ -341,7 +345,49 @@
   }
 
   /**
+   * Get break dates for event excluding exam period (for EXAM events).
+   * Only includes reading weeks, not the exam period itself.
+   */
+  function getBreakDatesForEventWithoutExams(eventStart, eventEnd, targetDays) {
+    const excludeDates = [];
+    
+    // Determine academic year from event start
+    const startMonth = eventStart.getMonth();
+    const fallYear = startMonth >= 7 ? eventStart.getFullYear() : eventStart.getFullYear() - 1;
+    
+    // Get reading weeks only (no exam period)
+    const breaks = [...getReadingWeeks(fallYear), ...getReadingWeeks(fallYear + 1)];
+    
+    for (const breakPeriod of breaks) {
+      const current = new Date(breakPeriod.start);
+      while (current <= breakPeriod.end) {
+        if (current >= eventStart && current <= eventEnd && targetDays.includes(current.getDay())) {
+          excludeDates.push(new Date(current));
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    
+    return excludeDates;
+  }
+
+  /**
+   * Get exam period dates (last 2 weeks of the term) for exclusion.
+   * The EndDate from WebAdvisor includes the exam period, so we need to exclude it.
+   * @param {Date} termEndDate - The end date of the term (including exams)
+   * @returns {{start: Date, end: Date}} The exam period to exclude
+   */
+  function getExamPeriod(termEndDate) {
+    // Exam period is the last 2 weeks (14 days) before the term end date
+    const examEnd = new Date(termEndDate);
+    const examStart = new Date(termEndDate);
+    examStart.setDate(examStart.getDate() - 13); // 14 days total including end date
+    return { start: examStart, end: examEnd };
+  }
+
+  /**
    * Get all break dates that fall on specified weekdays between event start and end.
+   * Includes reading weeks and exam periods.
    */
   function getBreakDatesForEvent(eventStart, eventEnd, targetDays) {
     const excludeDates = [];
@@ -350,7 +396,12 @@
     const startMonth = eventStart.getMonth();
     const fallYear = startMonth >= 7 ? eventStart.getFullYear() : eventStart.getFullYear() - 1;
     
+    // Get reading weeks
     const breaks = [...getReadingWeeks(fallYear), ...getReadingWeeks(fallYear + 1)];
+    
+    // Add exam period (last 2 weeks of the term) to breaks
+    const examPeriod = getExamPeriod(eventEnd);
+    breaks.push(examPeriod);
     
     for (const breakPeriod of breaks) {
       const current = new Date(breakPeriod.start);
