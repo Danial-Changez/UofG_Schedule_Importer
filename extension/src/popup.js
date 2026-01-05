@@ -14,6 +14,11 @@ const dom = {
   runText: document.getElementById("run-text"),
   termsList: document.getElementById("terms-list"),
   status: document.getElementById("status"),
+  progressContainer: document.getElementById("progress-container"),
+  progressBar: document.getElementById("progress-bar"),
+  progressLabel: document.getElementById("progress-label"),
+  progressPercent: document.getElementById("progress-percent"),
+  progressDetail: document.getElementById("progress-detail"),
 };
 
 const storage = {
@@ -43,6 +48,57 @@ function setRunState(running) {
   dom.runBtn.disabled = running;
   dom.runSpinner.style.display = running ? "inline-block" : "none";
   dom.runText.innerText = running ? "Running..." : "Run Selected";
+}
+
+function showProgress(show, provider = "") {
+  if (!dom.progressContainer) {
+    console.error("Progress container not found");
+    return;
+  }
+  console.log("showProgress called:", show, provider);
+  dom.progressContainer.style.display = show ? "block" : "none";
+  dom.progressContainer.className = "progress-container";
+  // Hide/show status text when progress bar is visible
+  if (dom.status) {
+    dom.status.style.display = show ? "none" : "block";
+  }
+  if (show) {
+    const providerName = provider === "google" ? "Google Calendar" : provider === "outlook" ? "Outlook Calendar" : "calendar";
+    dom.progressLabel.innerText = `Importing to ${providerName}...`;
+    dom.progressPercent.innerText = "0%";
+    dom.progressBar.style.width = "0%";
+    dom.progressDetail.innerText = "";
+  }
+}
+
+function updateProgress(percent, created, total, provider) {
+  if (!dom.progressBar) return;
+  const pct = Math.min(100, Math.max(0, percent));
+  dom.progressBar.style.width = `${pct}%`;
+  dom.progressPercent.innerText = `${Math.round(pct)}%`;
+  
+  if (total > 0) {
+    dom.progressDetail.innerText = `Created ${created} of ${total} events`;
+  }
+}
+
+function setProgressComplete(success, message) {
+  if (!dom.progressContainer) return;
+  dom.progressContainer.classList.add(success ? "complete" : "error");
+  dom.progressBar.style.width = "100%";
+  dom.progressPercent.innerText = success ? "Done!" : "Error";
+  dom.progressDetail.innerText = message;
+  
+  // Auto-hide after a delay on success and restore status visibility
+  if (success) {
+    setTimeout(() => {
+      dom.progressContainer.style.display = "none";
+      if (dom.status) dom.status.style.display = "block";
+    }, 3000);
+  } else {
+    // On error, restore status visibility immediately
+    if (dom.status) dom.status.style.display = "block";
+  }
 }
 
 function toggleHelp(show) {
@@ -170,37 +226,46 @@ function renderProviderResult(provider, result) {
   });
 }
 
-function pollImportJob(jobId, provider) {
-  setStatus(`Import started (${provider}). Job: ${jobId}`);
+function pollImportJob(jobId, provider, totalEvents) {
+  showProgress(true, provider);
+  setStatus("");
+  
   const check = async () => {
     const resp = await new Promise((resolve) =>
       chrome.runtime.sendMessage({ action: "queryJob", jobId }, resolve)
     );
     if (!resp) {
+      setProgressComplete(false, "No response from background");
       setStatus("No response from background when polling job");
       return;
     }
     if (resp.status === "running") {
-      setStatus(`Job ${jobId} running (${provider}): ${resp.progress || 0}%`);
-      setTimeout(check, 1000);
+      const progress = resp.progress || 0;
+      const created = resp.created || 0;
+      updateProgress(progress, created, totalEvents, provider);
+      setTimeout(check, 500);
       return;
     }
     if (resp.status === "done") {
-      setStatus(`Import complete (${provider}).`);
-      renderProviderResult(provider, resp.result || { created: 0, errors: [] });
+      const result = resp.result || { created: 0, errors: [] };
+      const errCount = (result.errors || []).length;
+      setProgressComplete(true, `Successfully created ${result.created} events${errCount > 0 ? ` (${errCount} errors)` : ""}`);
+      setStatus("");
+      renderProviderResult(provider, result);
       return;
     }
     if (resp.status === "failed") {
-      setStatus(`Import failed (${provider}): ${resp.error || "unknown"}`);
+      setProgressComplete(false, resp.error || "Import failed");
+      setStatus(`Import failed: ${resp.error || "unknown"}`);
       return;
     }
-    setStatus(`Import job ${jobId} unknown state`);
+    setProgressComplete(false, "Unknown job state");
   };
   check();
 }
 
 async function startProviderImport(provider, events) {
-  setStatus(`Sending events to ${provider} import...`);
+  setStatus(`Starting ${provider} import...`);
   const startResp = await new Promise((resolve, reject) =>
     chrome.runtime.sendMessage(
       { action: "startImport", provider, events },
@@ -211,9 +276,10 @@ async function startProviderImport(provider, events) {
     )
   );
   if (startResp && startResp.jobId) {
-    pollImportJob(startResp.jobId, provider);
+    pollImportJob(startResp.jobId, provider, events.length);
   } else {
     setStatus(`Failed to start ${provider} import`);
+    showProgress(false);
   }
 }
 

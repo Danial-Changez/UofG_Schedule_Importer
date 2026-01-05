@@ -209,18 +209,28 @@
    * Import an array of normalized events into the signed-in Outlook calendar.
    * @async
    * @param {Array<Object>} events
+   * @param {function(number, number):void|null} [progressCallback=null]
    * @returns {Promise<{success:boolean,created:number,errors:Array}>}
    */
-  async function importEvents(events) {
+  async function importEvents(events, progressCallback = null) {
     const created = [];
     const errors = [];
+    let idx = 0;
     for (const ev of events) {
+      idx++;
       try {
         const payload = eventToGraphPayload(ev);
         await apiRequest("me/events", "POST", payload);
         created.push(ev);
       } catch (e) {
         errors.push({ event: ev, error: e.message });
+      }
+      if (progressCallback) {
+        try {
+          progressCallback(Math.round((idx / events.length) * 100), created.length);
+        } catch (e) {
+          // ignore callback errors
+        }
       }
     }
     return { success: errors.length === 0, created: created.length, errors };

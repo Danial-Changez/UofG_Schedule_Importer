@@ -60,6 +60,92 @@ function formatICSDatetime(dt, utc = false) {
   return `${year}${month}${day}T${hour}${min}${sec}${utc ? "Z" : ""}`;
 }
 
+/**
+ * Get the Nth occurrence of a specific weekday in a given month.
+ * @param {number} year
+ * @param {number} month - 0-indexed (0 = January)
+ * @param {number} weekday - 0 = Sunday, 1 = Monday, etc.
+ * @param {number} n - Which occurrence (1 = first, 2 = second, etc.)
+ * @returns {Date}
+ */
+function getNthWeekdayOfMonth(year, month, weekday, n) {
+  const firstDay = new Date(year, month, 1);
+  const firstWeekday = firstDay.getDay();
+  let dayOffset = weekday - firstWeekday;
+  if (dayOffset < 0) dayOffset += 7;
+  const date = 1 + dayOffset + (n - 1) * 7;
+  return new Date(year, month, date);
+}
+
+/**
+ * Calculate University of Guelph reading week dates for a given academic year.
+ * - Fall Study Break: Saturday before Thanksgiving through Tuesday after (Sat-Tue)
+ *   Thanksgiving is the 2nd Monday of October. Break is Sat, Sun, Mon (holiday), Tue (study day).
+ * - Winter Reading Week: Week containing Family Day (3rd Monday of February) - Mon-Fri
+ * @param {number} fallYear - The year of the fall semester
+ * @returns {Array<{start: Date, end: Date}>} Array of break periods
+ */
+function getReadingWeeks(fallYear) {
+  const breaks = [];
+  
+  // Fall Study Break: 2nd Monday of October is Thanksgiving
+  // Break runs from Saturday before Thanksgiving through Tuesday after
+  // Sat, Sun, Mon (Thanksgiving Holiday), Tue (Study Break Day) - classes resume Wed
+  const thanksgiving = getNthWeekdayOfMonth(fallYear, 9, 1, 2); // October, Monday, 2nd
+  const fallBreakStart = new Date(thanksgiving.getFullYear(), thanksgiving.getMonth(), thanksgiving.getDate() - 2); // Saturday
+  const fallBreakEnd = new Date(thanksgiving.getFullYear(), thanksgiving.getMonth(), thanksgiving.getDate() + 1); // Tuesday
+  breaks.push({
+    start: fallBreakStart,
+    end: fallBreakEnd
+  });
+  
+  // Winter Reading Week: 3rd Monday of February is Family Day
+  // Reading week is Mon-Fri of that week
+  const winterYear = fallYear + 1;
+  const familyDay = getNthWeekdayOfMonth(winterYear, 1, 1, 3); // February, Monday, 3rd
+  breaks.push({
+    start: new Date(familyDay.getFullYear(), familyDay.getMonth(), familyDay.getDate()),
+    end: new Date(familyDay.getFullYear(), familyDay.getMonth(), familyDay.getDate() + 4) // Friday
+  });
+  
+  return breaks;
+}
+
+/**
+ * Get all break dates that fall on specified weekdays between event start and end.
+ * @param {Date} eventStart - Event start date
+ * @param {Date} eventEnd - Event end date (UNTIL)
+ * @param {Array<number>} targetDays - JS weekday numbers (0=Sun, 1=Mon, etc.)
+ * @returns {Array<Date>} Dates to exclude
+ */
+function getBreakDatesForEvent(eventStart, eventEnd, targetDays) {
+  const excludeDates = [];
+  
+  // Determine academic year from event start
+  // If event starts Aug-Dec, fall year is that year
+  // If event starts Jan-Jul, fall year is previous year
+  const startMonth = eventStart.getMonth();
+  const fallYear = startMonth >= 7 ? eventStart.getFullYear() : eventStart.getFullYear() - 1;
+  
+  // Get reading weeks for this academic year and potentially the next
+  const breaks = [...getReadingWeeks(fallYear), ...getReadingWeeks(fallYear + 1)];
+  
+  for (const breakPeriod of breaks) {
+    // Iterate through each day of the break
+    const current = new Date(breakPeriod.start);
+    while (current <= breakPeriod.end) {
+      // Check if this break day falls within the event's recurrence range
+      // and matches one of the event's weekdays
+      if (current >= eventStart && current <= eventEnd && targetDays.includes(current.getDay())) {
+        excludeDates.push(new Date(current));
+      }
+      current.setDate(current.getDate() + 1);
+    }
+  }
+  
+  return excludeDates;
+}
+
 function buildCalendarLines(events) {
   // Build calendar lines and recurrence UNTIL cutoffs for non-exam items.
   // Use numeric timestamps for faster comparisons and cache parsed end dates.
@@ -150,6 +236,8 @@ function buildCalendarLines(events) {
           startDt = new Date(startDt.getTime() + 24 * 3600 * 1000);
           attempts++;
         }
+        // Recalculate endDt to maintain the same duration on the new start date
+        endDt = new Date(startDt.getTime() + durationMs);
       }
     }
 
@@ -162,10 +250,23 @@ function buildCalendarLines(events) {
     lines.push(`DTSTAMP:${formatICSDatetime(new Date(), true)}`);
     lines.push(`DTSTART:${formatICSDatetime(startDt)}`);
     lines.push(`DTEND:${formatICSDatetime(endDt)}`);
-    if (byday)
+    if (byday) {
       lines.push(
         `RRULE:FREQ=WEEKLY;BYDAY=${byday};UNTIL=${formatICSDatetime(untilDt)}`
       );
+      
+      // Add EXDATE entries for reading weeks
+      const bydayMap = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
+      const eventTargetDays = byday.split(",").map((d) => bydayMap[d]).filter((n) => n != null);
+      const breakDates = getBreakDatesForEvent(startDt, untilDt, eventTargetDays);
+      
+      for (const breakDate of breakDates) {
+        // Set the EXDATE to the same time as the event start
+        const exDate = new Date(breakDate);
+        exDate.setHours(startDt.getHours(), startDt.getMinutes(), 0, 0);
+        lines.push(`EXDATE:${formatICSDatetime(exDate)}`);
+      }
+    }
     lines.push(
       `SUMMARY:${ev.InstructionalMethod || ""} ${ev.CourseName || ""}*${
         ev.SectionNumber || ""

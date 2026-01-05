@@ -390,7 +390,7 @@
       }
       if (progressCallback) {
         try {
-          progressCallback(Math.round((idx / events.length) * 100));
+          progressCallback(Math.round((idx / events.length) * 100), created.length);
         } catch (e) {
           // ignore callback errors
         }

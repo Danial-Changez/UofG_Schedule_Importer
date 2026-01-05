@@ -62,11 +62,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (provider === "google") {
               console.log("background: running google import for job", jobId);
               if (!events) throw new Error("import via ICS is removed; pass normalized events");
-              res = await self.google.importEvents(events, (p) => updateProgress(jobId, p));
+              res = await self.google.importEvents(events, (p, c) => updateProgress(jobId, p, c));
             } else if (provider === "outlook") {
               console.log("background: running outlook import for job", jobId);
               if (!events) throw new Error("import via ICS is removed; pass normalized events");
-              res = await self.outlook.importEvents(events, (p) => updateProgress(jobId, p));
+              res = await self.outlook.importEvents(events, (p, c) => updateProgress(jobId, p, c));
             } else {
               throw new Error("Unsupported provider");
             }
@@ -128,10 +128,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
  * @async
  * @param {string} jobId
  * @param {number} progress - Progress percentage 0-100.
+ * @param {number} [created] - Number of events created so far.
  * @returns {Promise<void>}
  */
-async function updateProgress(jobId, progress) {
+async function updateProgress(jobId, progress, created) {
   const job = (await loadJob(jobId)) || jobs[jobId] || { id: jobId };
   job.progress = progress;
+  if (typeof created === "number") {
+    job.created = created;
+  }
   await saveJob(job);
 }
